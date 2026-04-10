@@ -1,0 +1,130 @@
+.image-upload-section { margin-bottom: 32px; }
+ 
+.section-note {
+  font-size: 13px;
+  color: #888780;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+ 
+.image-upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+ 
+@media (max-width: 640px) {
+  .image-upload-grid { grid-template-columns: 1fr; }
+}
+ 
+/* ── Upload card ── */
+.upload-card {
+  border: 1.5px solid #D3D1C7;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+ 
+.upload-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #F1EFE8;
+  border-bottom: 1px solid #D3D1C7;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+ 
+.upload-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c2c2a;
+}
+ 
+.upload-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  background: #534AB7;
+  color: #fff;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+ 
+/* ── Upload area ── */
+.upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+  min-height: 180px;
+}
+ 
+.upload-area:hover { background: #F8F7F4; }
+ 
+.upload-icon { color: #888780; }
+ 
+.upload-hint {
+  font-size: 14px;
+  color: #444441;
+  font-weight: 500;
+  text-align: center;
+  margin: 0;
+}
+ 
+.upload-format {
+  font-size: 12px;
+  color: #888780;
+  margin: 0;
+}
+ 
+/* ── Preview ── */
+.upload-preview {
+  position: relative;
+  min-height: 180px;
+}
+ 
+.preview-image {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  display: block;
+}
+ 
+.preview-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+}
+ 
+.preview-filename {
+  font-size: 12px;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+ 
+.remove-btn {
+  background: #E24B4A;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.remove-btn:hover { background: #A32D2D; }

@@ -1,0 +1,247 @@
+.history-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f0f9f4 0%, #ffffff 100%);
+  padding-bottom: 40px;
+}
+
+.history-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.history-summary-card {
+  background: var(--background-white);
+  border-radius: 16px;
+  box-shadow: 0 4px 18px var(--shadow-light);
+  border: 1px solid var(--border-color);
+  padding: 20px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.history-summary-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.history-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--primary-green-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--primary-green-dark);
+}
+
+.history-name {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.history-id {
+  font-size: 0.9rem;
+  color: var(--text-medium);
+}
+
+.history-summary-meta {
+  display: flex;
+  gap: 18px;
+}
+
+.history-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-meta-label {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.history-meta-value {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.history-timeline-card {
+  background: var(--background-white);
+  border-radius: 16px;
+  box-shadow: 0 4px 18px var(--shadow-light);
+  border: 1px solid var(--border-color);
+  padding: 20px 22px 18px;
+}
+
+.history-section-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 12px;
+}
+
+.history-loading,
+.history-error,
+.history-empty {
+  padding: 12px 0;
+  font-size: 0.95rem;
+  color: var(--text-medium);
+}
+
+.history-error {
+  color: var(--error-red);
+}
+
+.history-timeline {
+  position: relative;
+  padding-left: 8px;
+}
+
+.history-timeline-row {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.history-timeline-left {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.history-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--primary-green);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 3px var(--primary-green-light);
+  margin-top: 4px;
+}
+
+.history-line {
+  position: absolute;
+  top: 20px;
+  bottom: -10px;
+  width: 2px;
+  background: #e2e8f0;
+}
+
+.history-timeline-row:last-child .history-line {
+  display: none;
+}
+
+.history-timeline-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-date {
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.history-event-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.history-event-details {
+  font-size: 0.9rem;
+  color: var(--text-medium);
+  line-height: 1.6;
+}
+
+.history-details-actions {
+  margin-top: 8px;
+}
+
+.history-details-btn {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--background-white);
+  color: var(--text-dark);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.history-details-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px var(--shadow-light);
+}
+
+.history-details-card {
+  margin-top: 10px;
+  background: #f7fafc;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.history-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  font-size: 0.9rem;
+}
+
+.history-prob-note {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.history-patient-picker {
+  margin-top: 14px;
+  padding: 12px 0;
+}
+
+.history-patient-select {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--background-white);
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  box-shadow: 0 2px 6px var(--shadow-light);
+}
+
+@media (max-width: 768px) {
+  .history-container {
+    padding: 24px 16px 32px;
+  }
+
+  .history-summary-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .history-summary-meta {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+

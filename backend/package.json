@@ -1,0 +1,23 @@
+{
+  "name": "post-dalk-prediction-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "form-data": "latest",
+    "jsonwebtoken": "latest",
+    "mongodb": "^7.1.0",
+    "multer": "latest",
+    "node-fetch": "latest"
+  },
+  "devDependencies": {
+    "nodemon": "latest"
+  }
+}

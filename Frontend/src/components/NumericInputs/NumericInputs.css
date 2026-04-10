@@ -1,0 +1,63 @@
+.numeric-inputs-section { margin-bottom: 32px; }
+ 
+.input-group { margin-bottom: 28px; }
+ 
+.section-note {
+  font-size: 13px; color: #888780;
+  margin: -4px 0 14px; line-height: 1.5;
+}
+ 
+.form-row {
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
+ 
+.form-group {
+  display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 140px;
+}
+ 
+.form-group label {
+  font-size: 13px; font-weight: 600; color: #444441;
+}
+ 
+.field-hint {
+  display: block; font-size: 11px; font-weight: 400;
+  color: #888780; margin-top: 2px;
+}
+ 
+.form-group input {
+  padding: 10px 14px; border: 1.5px solid #D3D1C7;
+  border-radius: 8px; font-size: 14px; color: #2c2c2a;
+  background: #fff; transition: border-color 0.2s;
+  width: 100%; box-sizing: border-box;
+}
+ 
+.form-group input:focus {
+  outline: none; border-color: #534AB7;
+  box-shadow: 0 0 0 3px rgba(83,74,183,0.12);
+}
+ 
+/* ── Snellen preview ── */
+.snellen-preview {
+  display: flex; gap: 24px; margin-top: 10px;
+  padding: 10px 14px; background: #E1F5EE;
+  border-radius: 8px; font-size: 13px; color: #085041;
+  flex-wrap: wrap;
+}
+ 
+/* ── Auto notice ── */
+.auto-notice {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 18px; background: #E6F1FB;
+  border: 1px solid #85B7EB; border-radius: 8px;
+}
+ 
+.auto-badge {
+  display: inline-block; padding: 3px 10px;
+  background: #378ADD; color: #fff; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  white-space: nowrap; margin-top: 1px; flex-shrink: 0;
+}
+ 
+.auto-notice p {
+  font-size: 13px; color: #0C447C; line-height: 1.6; margin: 0;
+}

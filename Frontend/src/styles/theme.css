@@ -1,0 +1,42 @@
+:root {
+  /* Primary light green clinical theme */
+  --primary-green: #6BCF9B;
+  --primary-green-dark: #42A674;
+  --primary-green-light: #C8F5DA;
+
+  --background-white: #FFFFFF;
+  --accent-gray: #F4F9F6;
+
+  --text-dark: #1F2933;
+  --text-medium: #4B5563;
+  --text-light: #9CA3AF;
+
+  --border-color: #E2E8F0;
+  --error-red: #E57373;
+
+  --shadow-light: rgba(107, 207, 155, 0.08);
+  --shadow-medium: rgba(107, 207, 155, 0.2);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Inter', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--background-white);
+  color: var(--text-dark);
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
