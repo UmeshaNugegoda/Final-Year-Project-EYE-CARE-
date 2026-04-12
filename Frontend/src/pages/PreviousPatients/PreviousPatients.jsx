@@ -73,7 +73,7 @@ function PreviousPatients({ auth, onLogout }) {
       <div className="layout-shell">
         <Sidebar auth={auth} />
         <main className="layout-main">
-      <main className="patients-container">
+      <div className="patients-container">
         <section className="patients-header">
           <div>
             <h2 className="patients-title">Previous Patients</h2>
@@ -148,7 +148,7 @@ function PreviousPatients({ auth, onLogout }) {
               ))}
           </div>
         </section>
-      </main>
+      </div>
         </main>
       </div>
     </div>

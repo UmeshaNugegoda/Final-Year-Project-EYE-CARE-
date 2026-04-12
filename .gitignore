@@ -20,3 +20,14 @@ pnpm-debug.log*
 # OS / editor
 .DS_Store
 .vscode/
+
+# Claude
+CLAUDE.md
+.claude/
+
+# Tests
+test/
+tests/
+**/__tests__/
+**/*.test.*
+**/*.spec.*

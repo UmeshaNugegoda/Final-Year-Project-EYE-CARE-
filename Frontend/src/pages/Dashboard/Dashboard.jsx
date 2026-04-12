@@ -96,7 +96,7 @@ function Dashboard({ auth, onLogout }) {
     : []
 
   const activityType = (rec) => {
-    if (rec === 'Glasses') return 'assessment'
+    if (rec === 'Spectacles') return 'assessment'
     if (rec === 'Contact Lenses') return 'contact'
     return 'followup'
   }

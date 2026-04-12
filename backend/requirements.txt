@@ -1,6 +1,7 @@
 flask
 flask-cors
 easyocr
+opencv-python
 joblib
 numpy
 pandas

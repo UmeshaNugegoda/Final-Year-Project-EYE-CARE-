@@ -1130,42 +1130,91 @@ def extract_value_near_label(text, label_regex, min_val=None, max_val=None):
     except Exception:
         return None
  
+def _spatially_sorted_chunks(ocr_results, row_tolerance=15):
+    """
+    Convert EasyOCR detail=1 results into a spatially ordered chunk list.
+
+    EasyOCR does not guarantee strict left-to-right order within a row when
+    reading tabular reports. Without bounding boxes the code had no way to
+    tell which column (OD vs OS) a value belonged to.
+
+    This function groups detected tokens into rows by their vertical centre
+    coordinate (within ``row_tolerance`` pixels), then sorts each row left-to-
+    right by horizontal centre so the returned chunk list always follows a
+    predictable top-to-bottom, left-to-right reading order.  The existing
+    chunk-index logic (eye_idx = 0 for OD, 1 for OS) therefore works reliably.
+    """
+    if not ocr_results:
+        return []
+
+    annotated = []
+    for bbox, text, _conf in ocr_results:
+        token = str(text).strip()
+        if not token:
+            continue
+        # bbox: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
+        y_center = (bbox[0][1] + bbox[2][1]) / 2
+        x_center = (bbox[0][0] + bbox[2][0]) / 2
+        annotated.append((y_center, x_center, token))
+
+    # Sort by y first, then group into rows with tolerance for slight height variation.
+    annotated.sort(key=lambda t: t[0])
+    rows = []
+    for item in annotated:
+        y = item[0]
+        if rows and abs(y - rows[-1][-1][0]) <= row_tolerance:
+            rows[-1].append(item)
+        else:
+            rows.append([item])
+
+    # Within each row sort left → right.
+    chunks = []
+    for row in rows:
+        row.sort(key=lambda t: t[1])
+        chunks.extend(t[2] for t in row)
+
+    return chunks
+
+
 def run_ocr(image_path, image_type, eye):
     reader = get_reader()
     extracted = {}
     try:
-        # Use one or more OCR sources and merge text for better resilience.
-        ocr_sources = [image_path]
+        # Determine OCR sources (preprocessed images give better recognition).
+        raw_src = image_path
+        pre_src = None
+
         if image_type == "pachymetry":
             try:
-                ocr_sources = [_preprocess_pachymetry_for_ocr(image_path)]
+                pre_src = _preprocess_pachymetry_for_ocr(image_path)
             except Exception as e:
                 print(f"Preprocess OCR failed ({image_type}): {e}")
-                ocr_sources = [image_path]
         elif image_type == "topography":
             try:
-                ocr_sources = [image_path, _preprocess_topography_for_ocr(image_path)]
+                pre_src = _preprocess_topography_for_ocr(image_path)
             except Exception as e:
                 print(f"Preprocess OCR failed ({image_type}): {e}")
-                ocr_sources = [image_path]
 
-        chunks = []
-        seen = set()
-        for src in ocr_sources:
-            for tok in reader.readtext(src, detail=0):
-                key = str(tok).strip()
-                if not key:
-                    continue
-                norm = key.lower()
-                # Pachymetry tables repeat numeric cells (OD/OS columns); deduping by string
-                # collapses those columns and breaks eye-specific CCT extraction.
-                # Topography Sim K / keratometry rows also repeat the same numeric tokens.
-                if image_type not in ("pachymetry", "topography"):
-                    if norm in seen:
-                        continue
-                    seen.add(norm)
-                chunks.append(key)
-        text = " ".join(chunks)
+        # Read with bounding boxes (detail=1) so tokens can be spatially sorted.
+        # Spatial sorting ensures OD-column values come before OS-column values
+        # in the chunk list, making eye_idx=0/1 column selection reliable.
+        primary_src = pre_src if pre_src is not None else raw_src
+        primary_results = reader.readtext(primary_src, detail=1)
+        chunks = _spatially_sorted_chunks(primary_results)
+
+        # For topography also run OCR on the original image and append its text
+        # to improve regex coverage, but do NOT mix its chunks into the index-
+        # based chunk list (that would double every value and break column logic).
+        extra_text = ""
+        if image_type == "topography" and pre_src is not None:
+            try:
+                raw_results = reader.readtext(raw_src, detail=1)
+                raw_chunks = _spatially_sorted_chunks(raw_results)
+                extra_text = " " + " ".join(raw_chunks)
+            except Exception as e:
+                print(f"Secondary OCR pass failed: {e}")
+
+        text = " ".join(chunks) + extra_text
         effective_eye = infer_eye_from_text(text, eye)
         safe_preview = text[:250].encode("ascii", errors="ignore").decode("ascii", errors="ignore")
         print(f"[OCR/{image_type}/{eye}->{effective_eye}] {safe_preview}")
@@ -1494,4 +1543,4 @@ def debug():
     return jsonify(result)
  
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.run(debug=False, host="0.0.0.0", port=5001)
