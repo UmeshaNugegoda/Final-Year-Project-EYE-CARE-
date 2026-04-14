@@ -31,3 +31,7 @@ tests/
 **/__tests__/
 **/*.test.*
 **/*.spec.*
+
+# Generated test assets
+test_images/
+**/test_images/

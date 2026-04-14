@@ -101,10 +101,149 @@ def extract_first_cct_in_eye_section(text, eye):
             return v
     return None
 
+def _pad_image(img, pad=40):
+    """Add white border so edge text isn't clipped during OCR."""
+    import cv2
+    return cv2.copyMakeBorder(img, pad, pad, pad, pad,
+                               cv2.BORDER_CONSTANT, value=(255, 255, 255))
+
+
+def _sharpen(gray):
+    """Unsharp-mask pass — helps blurry photographed images."""
+    import cv2
+    import numpy as np
+    blurred = cv2.GaussianBlur(gray, (0, 0), 3)
+    return cv2.addWeighted(gray, 1.5, blurred, -0.5, 0)
+
+
+def _deskew(gray):
+    """Detect and correct small rotations (≤15°) in photographed images."""
+    import cv2
+    import numpy as np
+    # Threshold to find text pixels
+    _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    coords = np.column_stack(np.where(th > 0))
+    if len(coords) < 50:
+        return gray
+    angle = cv2.minAreaRect(coords)[-1]
+    if angle < -45:
+        angle = 90 + angle
+    if abs(angle) < 0.5 or abs(angle) > 15:
+        return gray
+    h, w = gray.shape
+    M = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
+    return cv2.warpAffine(gray, M, (w, h),
+                          flags=cv2.INTER_CUBIC,
+                          borderValue=255)
+
+
+def _extract_colored_text_layer(bgr, scale=2.5):
+    """
+    Isolate red + green text (Tomey K-value rows) onto a white background
+    and return a high-contrast grayscale image optimised for OCR.
+
+    Strategy:
+    - Convert to HSV.
+    - Mask red pixels (hue 0-15 and 160-180) and green pixels (hue 35-85).
+    - Dilate slightly so thin strokes are not lost.
+    - Composite the colored pixels onto white; everything else becomes white.
+    - Return the result upscaled and CLAHE-enhanced.
+    """
+    import cv2
+    import numpy as np
+
+    upscaled = cv2.resize(bgr, None, fx=scale, fy=scale,
+                          interpolation=cv2.INTER_CUBIC)
+    hsv = cv2.cvtColor(upscaled, cv2.COLOR_BGR2HSV)
+
+    # Red mask (wraps around 0° in HSV)
+    red_lo1 = cv2.inRange(hsv, np.array([0,   80,  60]), np.array([12,  255, 255]))
+    red_lo2 = cv2.inRange(hsv, np.array([158, 80,  60]), np.array([180, 255, 255]))
+    red_mask = cv2.bitwise_or(red_lo1, red_lo2)
+
+    # Green mask
+    green_mask = cv2.inRange(hsv, np.array([35, 60, 60]), np.array([90, 255, 255]))
+
+    combined = cv2.bitwise_or(red_mask, green_mask)
+
+    # Dilate to thicken thin strokes
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    combined = cv2.dilate(combined, kernel, iterations=1)
+
+    # White canvas; paint colored pixels black
+    result = np.full(upscaled.shape[:2], 255, dtype=np.uint8)
+    result[combined > 0] = 0
+
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    return clahe.apply(result)
+
+
+def _is_blurry(gray, threshold=80.0):
+    """Return True if the image appears blurry (low Laplacian variance)."""
+    import cv2
+    return cv2.Laplacian(gray, cv2.CV_64F).var() < threshold
+
+
 def _preprocess_pachymetry_for_ocr(image_path):
     """
-    Pachymetry tables are dense and OCR often misses micron values unless we
-    upscale + enhance contrast + threshold before EasyOCR.
+    Pachymetry tables are dense and OCR often misses micron values.
+    Pipeline: pad → upscale → deskew → sharpen → CLAHE → threshold.
+    Uses softer thresholding for blurry/photographed images.
+    """
+    import cv2
+
+    bgr = cv2.imread(image_path)
+    if bgr is None:
+        return image_path
+
+    bgr  = _pad_image(bgr, pad=30)
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+    gray = _deskew(gray)
+
+    blurry = _is_blurry(gray)
+
+    if blurry:
+        # Soft path for photographed/degraded images:
+        # bilateral filter preserves edges better than NL-means on noisy photos
+        gray = cv2.bilateralFilter(gray, d=9, sigmaColor=75, sigmaSpace=75)
+        gray = _sharpen(gray)
+        clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+        gray  = clahe.apply(gray)
+        # Larger block + higher C = softer, less noise-sensitive threshold
+        th = cv2.adaptiveThreshold(
+            gray, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            51, 8,
+        )
+    else:
+        # Sharp path for clean digital scans
+        gray = cv2.fastNlMeansDenoising(gray, None, h=8,
+                                         templateWindowSize=7, searchWindowSize=21)
+        gray = _sharpen(gray)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        gray  = clahe.apply(gray)
+        th = cv2.adaptiveThreshold(
+            gray, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            31, 2,
+        )
+
+    return cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
+
+
+def _preprocess_topography_for_ocr(image_path):
+    """
+    Topography reports (Tomey/axvam) contain K-values in red or green text
+    which grayscale conversion washes out.
+
+    Pipeline:
+    1. Run standard grayscale preprocessing (full page, good for labels/numbers).
+    2. Run color-channel extraction (isolates red/green K-value rows).
+    Both results are returned stacked vertically so EasyOCR sees both passes
+    in a single read call.
     """
     import cv2
     import numpy as np
@@ -113,54 +252,60 @@ def _preprocess_pachymetry_for_ocr(image_path):
     if bgr is None:
         return image_path
 
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    bgr = _pad_image(bgr, pad=30)
 
-    # Boost local contrast (helps thin digit strokes).
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
-
-    # Adaptive threshold to improve readability of small numbers.
-    th = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        31,
-        2,
-    )
-
-    # EasyOCR works well with RGB numpy arrays.
-    return cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
-
-def _preprocess_topography_for_ocr(image_path):
-    """
-    Topography reports often contain small colored labels (K/SK1/CYL).
-    Upscale + contrast enhancement helps OCR capture those values.
-    """
-    import cv2
-
-    bgr = cv2.imread(image_path)
-    if bgr is None:
-        return image_path
-
+    # ── Pass 1: standard grayscale + CLAHE + threshold ──────────────
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
-    gray = cv2.fastNlMeansDenoising(gray, None, h=10, templateWindowSize=7, searchWindowSize=21)
+    gray = _deskew(gray)
 
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
+    blurry = _is_blurry(gray)
 
-    th = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        35,
-        3,
-    )
+    if blurry:
+        gray = cv2.bilateralFilter(gray, d=9, sigmaColor=75, sigmaSpace=75)
+        gray = _sharpen(gray)
+        clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+        gray  = clahe.apply(gray)
+        th1 = cv2.adaptiveThreshold(
+            gray, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            51, 8,
+        )
+    else:
+        gray = _sharpen(gray)
+        gray = cv2.fastNlMeansDenoising(gray, None, h=10,
+                                         templateWindowSize=7, searchWindowSize=21)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        gray  = clahe.apply(gray)
+        th1 = cv2.adaptiveThreshold(
+            gray, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            35, 3,
+        )
 
-    return cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
+    # ── Pass 2: color-channel extraction (red/green text) ───────────
+    colored_layer = _extract_colored_text_layer(bgr, scale=2.5)
+
+    # Make both the same width before stacking
+    w_target = max(th1.shape[1], colored_layer.shape[1])
+
+    def pad_to_width(img, w):
+        if img.shape[1] < w:
+            pad = w - img.shape[1]
+            return cv2.copyMakeBorder(img, 0, 0, 0, pad,
+                                      cv2.BORDER_CONSTANT, value=255)
+        return img
+
+    th1_pad   = pad_to_width(th1, w_target)
+    color_pad = pad_to_width(colored_layer, w_target)
+
+    # Add a visible separator row so OCR doesn't merge text across passes
+    sep = np.full((40, w_target), 255, dtype=np.uint8)
+
+    combined = np.vstack([th1_pad, sep, color_pad])
+    return cv2.cvtColor(combined, cv2.COLOR_GRAY2RGB)
 
 def _extract_cct_from_pachymetry_chunks_v3(chunks, eye):
     """
@@ -206,8 +351,26 @@ def _extract_cct_from_pachymetry_chunks_v3(chunks, eye):
         except Exception:
             return None
 
-    # Prefer label-like token + following number.
-    # OCR misspellings seen in practice: "Cantre| Comral Thcknau (4m) 568", "Cewlcomeal Mkrese (Lu)".
+    # ── Strategy A: scan joined section text for CCT label + number ────
+    # This handles the common case where OCR splits "Central Corneal Thickness (µm)"
+    # across multiple chunks, so per-chunk matching misses it.
+    section_text = " ".join(section_chunks)
+    for pat in (
+        r"central\s*corneal\s*thick\w*\s*[\(\[]?[^0-9]{0,12}(\d{3,4})",
+        r"centr\w*\s+corn\w*\s+thick\w*[^0-9]{0,15}(\d{3,4})",
+        r"corneal\s+thick\w*[^0-9]{0,12}(\d{3,4})",
+        r"c\.?c\.?t\.?\s*[:\s]\s*(\d{3,4})",
+        r"central\s*thick\w*[^0-9]{0,12}(\d{3,4})",
+    ):
+        m = re.search(pat, section_text, re.IGNORECASE)
+        if m:
+            v = abs(float(m.group(1)))
+            if 150 <= v <= 1000:
+                print(f"  CCT(regex-section-text)={v}")
+                return v
+
+    # ── Strategy B: per-chunk label detection (handles fused OCR tokens) ─
+    # Also checks if "central"/"thick" appear in adjacent tokens, not just one.
     central_label_markers = (
         "cantre",
         "cettl",
@@ -216,7 +379,6 @@ def _extract_cct_from_pachymetry_chunks_v3(chunks, eye):
         "comeal",
         "comral",
         "ceni",
-        "cen",
     )
     thickness_like_markers = (
         "thck",
@@ -232,12 +394,28 @@ def _extract_cct_from_pachymetry_chunks_v3(chunks, eye):
     )
 
     for i, tok in enumerate(section_lower):
-        if any(cm in tok for cm in central_label_markers) and any(tm in tok for tm in thickness_like_markers):
-            # Look ahead a few tokens for the micron number.
-            for j in range(i + 1, min(i + 6, len(section_chunks))):
+        has_central   = any(cm in tok for cm in central_label_markers)
+        has_thickness = any(tm in tok for tm in thickness_like_markers)
+
+        # Single fused token: "CentralCornealThickness" type
+        if has_central and has_thickness:
+            for j in range(i + 1, min(i + 8, len(section_chunks))):
                 v = _first_number_in(section_chunks[j])
                 if v is not None and 150 <= v <= 1000:
                     return v
+
+        # Split label: "Central" ... "Thickness" across adjacent chunks
+        elif has_central:
+            # Look for "thick" in the next 3 tokens
+            for k in range(i + 1, min(i + 4, len(section_chunks))):
+                nearby = section_lower[k]
+                if any(tm in nearby for tm in thickness_like_markers):
+                    # Found split label — now find the number
+                    for j in range(k + 1, min(k + 6, len(section_chunks))):
+                        v = _first_number_in(section_chunks[j])
+                        if v is not None and 150 <= v <= 1000:
+                            return v
+                    break
 
     # Fallback: smallest plausible micron-like number in the OD/OS section.
     candidates = []
@@ -1130,6 +1308,30 @@ def extract_value_near_label(text, label_regex, min_val=None, max_val=None):
     except Exception:
         return None
  
+def _split_ocr_by_column(ocr_results, image_width, eye):
+    """
+    For side-by-side reports (Zeiss pachymetry has OD left / OS right),
+    filter OCR results to only those whose x-centre falls in the correct half.
+    This prevents OD and OS values from interleaving in the chunk list.
+
+    eye='OD' → keep tokens with x_centre < midpoint
+    eye='OS' → keep tokens with x_centre >= midpoint
+    """
+    if not ocr_results or not image_width:
+        return ocr_results
+    mid = image_width / 2
+    filtered = []
+    for item in ocr_results:
+        bbox, text, conf = item
+        x_center = (bbox[0][0] + bbox[2][0]) / 2
+        if eye == "OD" and x_center < mid:
+            filtered.append(item)
+        elif eye == "OS" and x_center >= mid:
+            filtered.append(item)
+    # If filtering removed everything (single-eye report), return all results
+    return filtered if filtered else ocr_results
+
+
 def _spatially_sorted_chunks(ocr_results, row_tolerance=15):
     """
     Convert EasyOCR detail=1 results into a spatially ordered chunk list.
@@ -1196,11 +1398,26 @@ def run_ocr(image_path, image_type, eye):
                 print(f"Preprocess OCR failed ({image_type}): {e}")
 
         # Read with bounding boxes (detail=1) so tokens can be spatially sorted.
-        # Spatial sorting ensures OD-column values come before OS-column values
-        # in the chunk list, making eye_idx=0/1 column selection reliable.
         primary_src = pre_src if pre_src is not None else raw_src
         primary_results = reader.readtext(primary_src, detail=1)
-        chunks = _spatially_sorted_chunks(primary_results)
+
+        # Pachymetry reports (Zeiss CIRRUS etc.) print OD and OS tables
+        # side-by-side. Without column splitting, the spatial sort interleaves
+        # both tables row-by-row, making eye section detection unreliable.
+        # Split by x-midpoint so each eye's chunks are processed in isolation.
+        if image_type == "pachymetry":
+            import cv2 as _cv2
+            _src_arr = primary_src if isinstance(primary_src, str) else None
+            if _src_arr is not None:
+                _im = _cv2.imread(_src_arr)
+                _img_w = _im.shape[1] if _im is not None else 0
+            else:
+                # pre_src is a numpy array — get its width directly
+                _img_w = primary_src.shape[1] if hasattr(primary_src, 'shape') else 0
+            eye_results = _split_ocr_by_column(primary_results, _img_w, (eye or "OD").upper())
+            chunks = _spatially_sorted_chunks(eye_results)
+        else:
+            chunks = _spatially_sorted_chunks(primary_results)
 
         # For topography also run OCR on the original image and append its text
         # to improve regex coverage, but do NOT mix its chunks into the index-
@@ -1318,6 +1535,55 @@ def run_ocr(image_path, image_type, eye):
         # Corneal thickness only from pachymetry images. Topography OCR often contains
         # unrelated "thickness"/CCT tokens that were overwriting or blocking correct values.
         if image_type == "pachymetry":
+            # ── Single-column path (column-split result only has one eye) ──
+            # Must run before the dual-column functions which require both eyes.
+            if "corneal_thickness_um" not in extracted:
+                # Strategy 1: strict label + value (works when OCR reads label cleanly)
+                for pat in (
+                    r"central\s*corneal\s*thick\w*.{0,50}?(\d{3,4})",
+                    r"centr\w*\s+corn\w*\s+thick\w*.{0,50}?(\d{3,4})",
+                    r"\bcct\b.{0,20}?(\d{3,4})",
+                ):
+                    m = re.search(pat, text, re.IGNORECASE)
+                    if m:
+                        v = _normalize_cct_um(abs(float(m.group(1))))
+                        if v and 150 <= v <= 1000:
+                            extracted["corneal_thickness_um"] = v
+                            print(f"  CCT(single-col-regex)={v}")
+                            break
+
+            # Strategy 2: two-anchor approach.
+            # OCR often splits "Central Corneal Thickness" across two separate
+            # detections. Find both anchors ("Central" and "Corneal Thickness")
+            # and extract the value that sits between or immediately after them.
+            if "corneal_thickness_um" not in extracted:
+                cth_m  = re.search(r"corneal\s*thick", text, re.IGNORECASE)
+                cen_m  = re.search(r"\bcentr\w*\b",    text, re.IGNORECASE)
+                if cth_m and cen_m:
+                    pos_cth = cth_m.start()
+                    pos_cen = cen_m.start()
+                    _found = None
+                    if pos_cen < pos_cth:
+                        # "Central" comes before "Corneal Thickness"
+                        # → CCT value is AFTER the "Corneal Thickness" label
+                        for nm in re.finditer(r"\b(\d{3,4})\b", text[pos_cth:]):
+                            v = float(nm.group(1))
+                            if 150 <= v <= 1000:
+                                _found = v
+                                break
+                    else:
+                        # "Corneal Thickness" comes before "Central"
+                        # → CCT value is the LAST valid number before "Central"
+                        for nm in re.finditer(r"\b(\d{3,4})\b", text[pos_cth:pos_cen]):
+                            v = float(nm.group(1))
+                            if 150 <= v <= 1000:
+                                _found = v   # keep overwriting → takes the last one
+                    if _found is not None:
+                        v = _normalize_cct_um(_found)
+                        if v and 150 <= v <= 1000:
+                            extracted["corneal_thickness_um"] = v
+                            print(f"  CCT(two-anchor)={v}")
+
             if "corneal_thickness_um" not in extracted:
                 v = extract_cct_explicit_labeled_eyes(text, effective_eye)
                 if v:
