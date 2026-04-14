@@ -65,7 +65,7 @@ function Admin({ auth, onLogout }) {
       <div className="layout-shell">
         <Sidebar auth={auth} />
         <main className="layout-main">
-      <div className="admin-container">
+          <div className="admin-container">
         <div className="admin-card">
           <h2 className="admin-title">User Management</h2>
           <p className="admin-subtitle">
@@ -145,7 +145,7 @@ function Admin({ auth, onLogout }) {
             </p>
           </div>
         </div>
-      </div>
+          </div>
         </main>
       </div>
     </div>

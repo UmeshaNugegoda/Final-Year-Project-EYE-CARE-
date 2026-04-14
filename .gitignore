@@ -35,3 +35,9 @@ tests/
 # Generated test assets
 test_images/
 **/test_images/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo

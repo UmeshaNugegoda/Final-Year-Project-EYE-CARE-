@@ -17,7 +17,7 @@ app.use(express.json())
 
 const PORT       = process.env.PORT       || 4000
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-post-dalk-secret-change-me'
-const FLASK_URL  = process.env.FLASK_URL  || 'http://localhost:5000'
+const FLASK_URL  = process.env.FLASK_URL  || 'http://localhost:5001'
 
 let usersCollection
 let predictionsCollection
@@ -170,6 +170,38 @@ app.post('/api/users', authMiddleware, adminOnly, async (req, res) => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 app.post(
+  '/api/analyze-quality',
+  upload.fields([
+    { name: 'topography', maxCount: 1 },
+    { name: 'pachymetry', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const files = req.files
+      const qualityForm = new FormData()
+      for (const key of ['topography', 'pachymetry']) {
+        if (files?.[key]?.[0]) {
+          qualityForm.append(key, files[key][0].buffer, {
+            filename   : files[key][0].originalname,
+            contentType: files[key][0].mimetype,
+          })
+        }
+      }
+      const r = await fetch(`${FLASK_URL}/api/analyze-quality`, {
+        method : 'POST',
+        body   : qualityForm,
+        headers: qualityForm.getHeaders(),
+      })
+      if (r.ok) return res.json(await r.json())
+      return res.json({ warnings: { topography: [], pachymetry: [] } })
+    } catch (err) {
+      console.warn('Quality check (non-fatal):', err.message)
+      return res.json({ warnings: { topography: [], pachymetry: [] } })
+    }
+  }
+)
+
+app.post(
   '/api/predictions',
   upload.fields([
     { name: 'topography', maxCount: 1 },
@@ -182,7 +214,12 @@ app.post(
         patientId, eye, monthsAfterDALK,
         ucva_logmar, bcva_logmar,
         sphere_diopters, cylinder_diopters, axis_degrees, corneal_thickness_override,
+        k1_override, k2_override, cyl_override,
       } = req.body
+
+      const k1Override  = k1_override  != null && k1_override  !== '' ? Number(k1_override)  : null
+      const k2Override  = k2_override  != null && k2_override  !== '' ? Number(k2_override)  : null
+      const cylOverride = cyl_override != null && cyl_override !== '' ? Number(cyl_override) : null
 
       const files = req.files
       const normalizedPatientId = String(patientId || '').trim()
@@ -202,7 +239,8 @@ app.post(
       console.log(`VA: UCVA ${ucva_logmar} → ${ucva_decimal} | BCVA ${bcva_logmar} → ${bcva_decimal}`)
 
       // ── Step 2: OCR both images via Flask ───────────────────────
-      let extractedValues = {}
+      let extractedValues     = {}
+      let ocrExtractionStatus = {}
 
       if (files?.topography?.[0] || files?.pachymetry?.[0]) {
         try {
@@ -229,8 +267,9 @@ app.post(
           })
 
           if (ocrRes.ok) {
-            const ocrData   = await ocrRes.json()
-            extractedValues = ocrData.extracted || {}
+            const ocrData        = await ocrRes.json()
+            extractedValues      = ocrData.extracted || {}
+            ocrExtractionStatus  = ocrData.extraction_status || {}
             console.log('OCR extracted:', extractedValues)
           } else {
             console.warn('OCR request failed — proceeding without extracted values')
@@ -241,22 +280,27 @@ app.post(
         }
       }
 
-      // ── Step 3: Get extracted values ────────────────────────────
+      // ── Step 3: Get extracted values (overrides take precedence) ─
       const k1Raw    = extractedValues.K1_diopters
       const astigRaw = extractedValues.astigmatism_diopters
       const k2Raw    = extractedValues.K2_diopters
 
-      const k1 = k1Raw != null ? Number(k1Raw) : null
-          // Model uses astigmatism magnitude in diopters (0..10).
+      const k1FromOcr = k1Raw != null ? Number(k1Raw) : null
+      const k1 = (k1Override != null && Number.isFinite(k1Override)) ? k1Override : k1FromOcr
+
+      // Model uses astigmatism magnitude in diopters (0..10).
       const astigFromOcr = astigRaw != null ? Number(astigRaw) : null
-      const astig = astigFromOcr != null && Number.isFinite(astigFromOcr) && astigFromOcr >= 0 && astigFromOcr <= 10
-        ? astigFromOcr
-        : null
+      const astigOcrValid = astigFromOcr != null && Number.isFinite(astigFromOcr) && astigFromOcr >= 0 && astigFromOcr <= 10
+        ? astigFromOcr : null
+      const astig = (cylOverride != null && Number.isFinite(cylOverride) && cylOverride >= 0 && cylOverride <= 10)
+        ? cylOverride
+        : astigOcrValid
 
       const k2FromOcr = k2Raw != null ? Number(k2Raw) : null
-      const k2 = k2FromOcr != null && Number.isFinite(k2FromOcr)
-        ? k2FromOcr
-        : calcK2(k1, astig)
+      const k2 = (k2Override != null && Number.isFinite(k2Override))
+        ? k2Override
+        : (k2FromOcr != null && Number.isFinite(k2FromOcr) ? k2FromOcr : calcK2(k1, astig))
+
       const overrideCct = corneal_thickness_override != null && corneal_thickness_override !== ''
         ? Number(corneal_thickness_override)
         : null
@@ -271,6 +315,15 @@ app.post(
           ? overrideCct
           : null
       )
+
+      // Build per-field extraction status (after overrides applied)
+      const extractionStatus = {
+        K1_diopters         : k1Override  != null ? 'manual_override' : (ocrExtractionStatus.K1_diopters          || 'not_found'),
+        K2_diopters         : k2Override  != null ? 'manual_override' : (k2FromOcr != null ? 'extracted'          : 'not_found'),
+        astigmatism_diopters: cylOverride != null ? 'manual_override' : (ocrExtractionStatus.astigmatism_diopters || 'not_found'),
+        corneal_thickness_um: (overrideCct != null && cctFromOcrValid == null) ? 'manual_override' : (ocrExtractionStatus.corneal_thickness_um || 'not_found'),
+      }
+
       console.log(`K1=${k1} Corneal Astigmatism (Cyl)=${astig} K2=${k2} CCT=${cct}`)
 
       // ── Step 4: Call Flask ML model ─────────────────────────────
@@ -339,6 +392,7 @@ app.post(
         historySaved: true,
         recordId: String(insertResult?.insertedId ?? ''),
         timestamp      : new Date().toISOString(),
+        extractionStatus,
       })
 
     } catch (error) {

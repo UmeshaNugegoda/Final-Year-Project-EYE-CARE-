@@ -94,6 +94,55 @@ function NumericInputs({ formData, handleInputChange }) {
         </div>
         <div className="form-row">
           <div className="form-group">
+            <label htmlFor="k1Override">
+              K1 Override (D)
+              <span className="field-hint">Optional — only if OCR value is wrong</span>
+            </label>
+            <input
+              type="number"
+              id="k1Override"
+              name="k1Override"
+              value={formData.k1Override || ''}
+              onChange={handleInputChange}
+              placeholder="Optional"
+              step="0.01"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="k2Override">
+              K2 Override (D)
+              <span className="field-hint">Optional</span>
+            </label>
+            <input
+              type="number"
+              id="k2Override"
+              name="k2Override"
+              value={formData.k2Override || ''}
+              onChange={handleInputChange}
+              placeholder="Optional"
+              step="0.01"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="cylOverride">
+              Cyl Override (D)
+              <span className="field-hint">Optional</span>
+            </label>
+            <input
+              type="number"
+              id="cylOverride"
+              name="cylOverride"
+              value={formData.cylOverride || ''}
+              onChange={handleInputChange}
+              placeholder="Optional"
+              step="0.01"
+              min="0"
+              max="10"
+            />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
             <label htmlFor="cornealThickness">
               Central Corneal Thickness Fallback (um)
               <span className="field-hint">Optional, only if OCR fails (e.g. 424 or 566)</span>

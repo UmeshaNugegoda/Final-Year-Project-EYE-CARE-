@@ -118,7 +118,7 @@ function PatientHistory({ auth, onLogout }) {
       <div className="layout-shell">
         <Sidebar auth={auth} />
         <main className="layout-main">
-      <div className="history-container">
+          <div className="history-container">
         <section className="history-summary-card">
           <div className="history-summary-main">
             <div className="history-avatar">{initials(patientId)}</div>
@@ -241,7 +241,7 @@ function PatientHistory({ auth, onLogout }) {
             </div>
           )}
         </section>
-      </div>
+          </div>
         </main>
       </div>
     </div>

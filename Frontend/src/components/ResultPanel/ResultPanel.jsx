@@ -1,6 +1,14 @@
 import React from 'react'
 import './ResultPanel.css'
 
+// Maps extractedValues display keys → extractionStatus field names
+const KEY_TO_STATUS_FIELD = {
+  K1_diopters          : 'K1_diopters',
+  K2_diopters          : 'K2_diopters',
+  astigmatism_diopters : 'astigmatism_diopters',
+  corneal_thickness_um : 'corneal_thickness_um',
+}
+
 const CLASS_COLORS = {
   'Spectacles'    : { bg:'#EAF3DE', accent:'#3B6D11', badge:'#639922' },
   'Contact Lenses': { bg:'#E1F5EE', accent:'#085041', badge:'#1D9E75' },
@@ -21,9 +29,18 @@ function ResultPanel({ result }) {
     const win = window.open('', '_blank')
     if (!win) return
 
+    const statusLabel = (key) => {
+      const s = result.extractionStatus?.[key]
+      if (s === 'extracted')       return ' [Extracted]'
+      if (s === 'manual_override') return ' [Manual override]'
+      return ' [Estimated]'
+    }
     const extractedRows = result.extractedValues
       ? Object.entries(result.extractedValues)
-          .map(([key, val]) => `<tr><td>${escapeHtml(formatKey(key))}</td><td>${escapeHtml(String(val ?? '-'))}</td></tr>`)
+          .map(([key, val]) => {
+            const fieldKey = KEY_TO_STATUS_FIELD[key] || key
+            return `<tr><td>${escapeHtml(formatKey(key))}</td><td>${escapeHtml(String(val ?? '-'))}${escapeHtml(statusLabel(fieldKey))}</td></tr>`
+          })
           .join('')
       : ''
 
@@ -65,6 +82,9 @@ function ResultPanel({ result }) {
           </div>
           <div class="box">
             <strong>Extracted/Calculated Values</strong>
+            <p style="font-size:12px;color:#8a6800;background:#fffbe6;border:1px solid #f0c93a;border-radius:6px;padding:8px 12px;margin:10px 0 6px;">
+              ⚠ These values were read automatically from the uploaded images using OCR. Accuracy depends on image quality. Always verify against the original report before accepting the prediction.
+            </p>
             <table>
               <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
               <tbody>${extractedRows || '<tr><td colspan="2">No extracted values</td></tr>'}</tbody>
@@ -140,13 +160,32 @@ function ResultPanel({ result }) {
         {result.extractedValues && (
           <div className="extracted-section">
             <p className="extracted-title">Values extracted from report images</p>
+
+            {/* OCR accuracy notice */}
+            <div className="ocr-notice">
+              <span className="ocr-notice-icon">🔍</span>
+              <span>
+                These values were read automatically from the uploaded images using OCR.
+                Accuracy depends on image quality — blurry, photographed, or damaged reports
+                may produce incorrect readings. <strong>Always verify extracted values against
+                the original report before accepting the prediction.</strong>
+              </span>
+            </div>
+
             <div className="extracted-grid">
-              {Object.entries(result.extractedValues).map(([key, val]) => (
-                <div key={key} className="extracted-item">
-                  <span className="extracted-key">{formatKey(key)}</span>
-                  <span className="extracted-val">{val ?? '—'}</span>
-                </div>
-              ))}
+              {Object.entries(result.extractedValues).map(([key, val]) => {
+                const fieldKey = KEY_TO_STATUS_FIELD[key]
+                const status   = fieldKey ? (result.extractionStatus?.[fieldKey] || 'not_found') : null
+                return (
+                  <div key={key} className="extracted-item">
+                    <span className="extracted-key">{formatKey(key)}</span>
+                    <span className="extracted-val">{val ?? '—'}</span>
+                    {status === 'extracted'       && <span className="status-extracted">Extracted</span>}
+                    {status === 'manual_override' && <span className="status-override">Manual override</span>}
+                    {status === 'not_found'       && <span className="status-estimated">Estimated</span>}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}

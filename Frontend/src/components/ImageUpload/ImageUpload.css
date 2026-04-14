@@ -128,3 +128,113 @@
   flex-shrink: 0;
 }
 .remove-btn:hover { background: #A32D2D; }
+
+/* ── Image quality guidance banner ── */
+.img-guidance-banner {
+  margin-bottom: 18px;
+  border: 1px solid #D3D1C7;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #F8F7F4;
+}
+
+.img-guidance-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #444441;
+  transition: background 0.15s;
+}
+.img-guidance-toggle:hover { background: #EEECe8; }
+
+.img-guidance-icon { font-size: 16px; flex-shrink: 0; }
+
+.img-guidance-label { flex: 1; }
+
+.img-guidance-chevron {
+  font-size: 16px;
+  color: #888780;
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+.img-guidance-chevron.open { transform: rotate(180deg); }
+
+.img-guidance-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #D3D1C7;
+}
+
+.img-guidance-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: #5F5E5A;
+  line-height: 1.5;
+}
+
+.img-guidance-bullet {
+  flex-shrink: 0;
+  font-size: 14px;
+  margin-top: 1px;
+}
+
+/* ── Quality check feedback ── */
+.quality-checking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #666;
+  background: #F8F7F4;
+}
+
+@keyframes quality-spin {
+  to { transform: rotate(360deg); }
+}
+
+.quality-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #D3D1C7;
+  border-top-color: #888780;
+  border-radius: 50%;
+  animation: quality-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.quality-warnings {
+  border-top: 1px solid #EF9F27;
+  background: #FAEEDA;
+  padding: 10px 14px 8px;
+}
+
+.quality-warning-item {
+  font-size: 13px;
+  color: #633806;
+  font-weight: 500;
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.quality-warning-note {
+  font-size: 11px;
+  color: #9A6020;
+  font-style: italic;
+  margin: 6px 0 0;
+}
