@@ -238,3 +238,22 @@
   font-style: italic;
   margin: 6px 0 0;
 }
+/* ── Manual entry mode ── */
+.upload-grid-hidden {
+  display: none;
+}
+
+.manual-entry-note {
+  color: #2e9a5f;
+  font-weight: 500;
+}
+
+.manual-entry-selected-card {
+  font-size: 13px;
+  color: #2e9a5f;
+  background: #f6fbf8;
+  border: 1.5px solid #b3e4c8;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}

@@ -6,6 +6,7 @@ import ImageUpload   from '../../components/ImageUpload/ImageUpload'
 import NumericInputs from '../../components/NumericInputs/NumericInputs'
 import PredictButton from '../../components/PredictButton/PredictButton'
 import ResultPanel   from '../../components/ResultPanel/ResultPanel'
+import ModeModal     from '../../components/ModeModal/ModeModal'
 import './Prediction.css'
 import { snellenToLogmar } from '../../utils/visualAcuity'
 
@@ -21,6 +22,8 @@ function Prediction({ auth, onLogout }) {
   const [error, setError]           = useState(null)
   const [qualityWarnings, setQualityWarnings] = useState({ topography: [], pachymetry: [] })
   const [qualityChecking, setQualityChecking] = useState({ topography: false, pachymetry: false })
+  const [submissionMode, setSubmissionMode] = useState(null) // null | 'ocr' | 'manual'
+  const [showModeModal, setShowModeModal]   = useState(false)
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -35,6 +38,8 @@ function Prediction({ auth, onLogout }) {
     }
     setImages(prev => ({ ...prev, [type]: { file, preview: URL.createObjectURL(file) } }))
     setQualityWarnings(prev => ({ ...prev, [type]: [] }))
+    setSubmissionMode(null)
+    setShowModeModal(false)
     setQualityChecking(prev => ({ ...prev, [type]: true }))
     try {
       const qForm = new FormData()
@@ -42,7 +47,14 @@ function Prediction({ auth, onLogout }) {
       const res = await fetch('/api/analyze-quality', { method: 'POST', body: qForm })
       if (res.ok) {
         const data = await res.json()
-        setQualityWarnings(prev => ({ ...prev, [type]: data.warnings?.[type] || [] }))
+        const warnings = data.warnings?.[type] || []
+        setQualityWarnings(prev => {
+          const next = { ...prev, [type]: warnings }
+          // Show modal if there are warnings for any uploaded image and no mode chosen yet
+          const anyWarnings = Object.values(next).some(w => w.length > 0)
+          if (anyWarnings) setShowModeModal(true)
+          return next
+        })
       }
     } catch {
       // non-fatal — silently ignore
@@ -56,6 +68,23 @@ function Prediction({ auth, onLogout }) {
     setImages(prev => ({ ...prev, [type]: null }))
     setQualityWarnings(prev => ({ ...prev, [type]: [] }))
     setQualityChecking(prev => ({ ...prev, [type]: false }))
+    setSubmissionMode(null)
+    setShowModeModal(false)
+  }
+
+  const handleModeSelect = (mode) => {
+    if (mode === 'reupload') {
+      // Close modal, clear images so user can re-upload
+      setShowModeModal(false)
+      setSubmissionMode(null)
+      setQualityWarnings({ topography: [], pachymetry: [] })
+      if (images.topography?.preview) URL.revokeObjectURL(images.topography.preview)
+      if (images.pachymetry?.preview) URL.revokeObjectURL(images.pachymetry.preview)
+      setImages({ topography: null, pachymetry: null })
+    } else {
+      setSubmissionMode(mode)
+      setShowModeModal(false)
+    }
   }
 
   const ucvaLogmar = snellenToLogmar(formData.ucva)
@@ -88,8 +117,14 @@ function Prediction({ auth, onLogout }) {
       if (formData.k1Override  !== '') payload.append('k1_override',  Number(formData.k1Override))
       if (formData.k2Override  !== '') payload.append('k2_override',  Number(formData.k2Override))
       if (formData.cylOverride !== '') payload.append('cyl_override', Number(formData.cylOverride))
-      payload.append('topography', images.topography.file)  // OCR → K1, astig, K2
-      payload.append('pachymetry', images.pachymetry.file)  // OCR → CCT
+
+      // In manual mode images are not required; in ocr mode append whatever is present
+      const effectiveMode = submissionMode || 'ocr'
+      payload.append('mode', effectiveMode)
+      if (effectiveMode !== 'manual') {
+        if (images.topography?.file) payload.append('topography', images.topography.file)
+        if (images.pachymetry?.file) payload.append('pachymetry', images.pachymetry.file)
+      }
 
       const response = await fetch('/api/predictions', { method:'POST', body: payload })
       if (!response.ok) {
@@ -117,8 +152,19 @@ function Prediction({ auth, onLogout }) {
         <main className="layout-main">
           <div className="container">
             <PatientInfo formData={formData} handleInputChange={handleInputChange} />
-            <ImageUpload images={images} handleImageUpload={handleImageUpload} removeImage={removeImage} qualityWarnings={qualityWarnings} qualityChecking={qualityChecking} />
-            <NumericInputs formData={formData} handleInputChange={handleInputChange} />
+            <ImageUpload
+              images={images}
+              handleImageUpload={handleImageUpload}
+              removeImage={removeImage}
+              qualityWarnings={qualityWarnings}
+              qualityChecking={qualityChecking}
+              submissionMode={submissionMode}
+            />
+            <NumericInputs
+              formData={formData}
+              handleInputChange={handleInputChange}
+              submissionMode={submissionMode}
+            />
             <PredictButton isDisabled={!isFormValid() || isSubmitting} onClick={handlePredict} />
             {isSubmitting && (
               <div className="loading-state">
@@ -131,6 +177,12 @@ function Prediction({ auth, onLogout }) {
           </div>
         </main>
       </div>
+      {showModeModal && (
+        <ModeModal
+          qualityWarnings={qualityWarnings}
+          onModeSelect={handleModeSelect}
+        />
+      )}
     </div>
   )
 }

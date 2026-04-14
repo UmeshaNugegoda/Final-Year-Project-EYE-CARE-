@@ -5,6 +5,31 @@ Functions here operate on raw image files (BGR arrays / file paths) using
 OpenCV and do not touch EasyOCR. They are imported by reader.py.
 """
 
+MAX_OCR_WIDTH = 1200  # pixels — larger images are scaled down before upscaling
+
+
+def _cap_and_scale(gray_or_bgr, target_scale=2.5):
+    """
+    Scale image to an OCR-friendly size.
+    - If the image is wide, scale DOWN to MAX_OCR_WIDTH first so EasyOCR
+      doesn't run on a 5000px image when a 1500px one would do fine.
+    - Then apply target_scale upscale (for small/low-res originals).
+    Returns the scaled image.
+    """
+    import cv2
+    h, w = gray_or_bgr.shape[:2]
+    # Step 1: cap large images
+    if w > MAX_OCR_WIDTH:
+        scale = MAX_OCR_WIDTH / w
+        gray_or_bgr = cv2.resize(gray_or_bgr, None, fx=scale, fy=scale,
+                                  interpolation=cv2.INTER_AREA)
+        h, w = gray_or_bgr.shape[:2]
+    # Step 2: upscale small images
+    if w < 800:
+        gray_or_bgr = cv2.resize(gray_or_bgr, None, fx=target_scale, fy=target_scale,
+                                  interpolation=cv2.INTER_CUBIC)
+    return gray_or_bgr
+
 
 def _pad_image(img, pad=40):
     """Add white border so edge text isn't clipped during OCR."""
@@ -203,7 +228,7 @@ def _preprocess_pachymetry_for_ocr(image_path):
     bgr  = _pad_image(bgr, pad=30)
     bgr  = _mask_hole_punches(bgr)
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+    gray = _cap_and_scale(gray, target_scale=2.5)
     gray = _deskew(gray)
 
     blurry = _is_blurry(gray)
@@ -238,20 +263,17 @@ def _preprocess_pachymetry_for_ocr(image_path):
 
     return cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
 
-
 def _preprocess_topography_for_ocr(image_path):
     """
-    Topography reports (Tomey/axvam) contain K-values in red or green text
-    which grayscale conversion washes out.
+    Topography reports (Tomey/axvam) — grayscale preprocessing pipeline.
+    Pad → hole-mask → cap/scale → deskew → sharpen → CLAHE → threshold.
 
-    Pipeline:
-    1. Run standard grayscale preprocessing (full page, good for labels/numbers).
-    2. Run color-channel extraction (isolates red/green K-value rows).
-    Both results are returned stacked vertically so EasyOCR sees both passes
-    in a single read call.
+    The colour-layer extraction (_extract_colored_text_layer) is NOT stacked here
+    to avoid doubling the numpy array size sent to EasyOCR (which was causing
+    macOS to OOM-kill Python on consecutive predictions). reader.py calls
+    get_color_layer_for_topography() separately if K values are not found.
     """
     import cv2
-    import numpy as np
 
     bgr = cv2.imread(image_path)
     if bgr is None:
@@ -260,9 +282,8 @@ def _preprocess_topography_for_ocr(image_path):
     bgr = _pad_image(bgr, pad=30)
     bgr = _mask_hole_punches(bgr)
 
-    # ── Pass 1: standard grayscale + CLAHE + threshold ──────────────
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(gray, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC)
+    gray = _cap_and_scale(gray, target_scale=2.5)
     gray = _deskew(gray)
 
     blurry = _is_blurry(gray)
@@ -272,7 +293,7 @@ def _preprocess_topography_for_ocr(image_path):
         gray = _sharpen(gray)
         clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
         gray  = clahe.apply(gray)
-        th1 = cv2.adaptiveThreshold(
+        th = cv2.adaptiveThreshold(
             gray, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY,
@@ -284,31 +305,30 @@ def _preprocess_topography_for_ocr(image_path):
                                          templateWindowSize=7, searchWindowSize=21)
         clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         gray  = clahe.apply(gray)
-        th1 = cv2.adaptiveThreshold(
+        th = cv2.adaptiveThreshold(
             gray, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY,
             35, 3,
         )
 
-    # ── Pass 2: color-channel extraction (red/green text) ───────────
-    colored_layer = _extract_colored_text_layer(bgr, scale=2.5)
+    return cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
 
-    # Make both the same width before stacking
-    w_target = max(th1.shape[1], colored_layer.shape[1])
 
-    def pad_to_width(img, w):
-        if img.shape[1] < w:
-            pad = w - img.shape[1]
-            return cv2.copyMakeBorder(img, 0, 0, 0, pad,
-                                      cv2.BORDER_CONSTANT, value=255)
-        return img
+def get_color_layer_for_topography(image_path):
+    """
+    Returns the red/green colour-channel extraction for a topography image.
+    Called by reader.py only as a fallback when K values aren't found in
+    the grayscale pass, to avoid holding both large arrays in memory at once.
+    """
+    import cv2
 
-    th1_pad   = pad_to_width(th1, w_target)
-    color_pad = pad_to_width(colored_layer, w_target)
+    bgr = cv2.imread(image_path)
+    if bgr is None:
+        return None
 
-    # Add a visible separator row so OCR doesn't merge text across passes
-    sep = np.full((40, w_target), 255, dtype=np.uint8)
+    bgr = _pad_image(bgr, pad=30)
+    bgr = _mask_hole_punches(bgr)
+    colored = _extract_colored_text_layer(bgr, scale=2.5)
+    return cv2.cvtColor(colored, cv2.COLOR_GRAY2RGB)
 
-    combined = np.vstack([th1_pad, sep, color_pad])
-    return cv2.cvtColor(combined, cv2.COLOR_GRAY2RGB)

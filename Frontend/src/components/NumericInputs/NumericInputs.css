@@ -61,3 +61,19 @@
 .auto-notice p {
   font-size: 13px; color: #0C447C; line-height: 1.6; margin: 0;
 }
+.manual-notice {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 18px; background: #f6fbf8;
+  border: 1px solid #b3e4c8; border-radius: 8px;
+}
+
+.manual-badge {
+  display: inline-block; padding: 3px 10px;
+  background: #2e9a5f; color: #fff; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  white-space: nowrap; margin-top: 1px; flex-shrink: 0;
+}
+
+.manual-notice p {
+  font-size: 13px; color: #1a5c38; line-height: 1.6; margin: 0;
+}

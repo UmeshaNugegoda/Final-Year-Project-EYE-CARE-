@@ -215,8 +215,10 @@ app.post(
         ucva_logmar, bcva_logmar,
         sphere_diopters, cylinder_diopters, axis_degrees, corneal_thickness_override,
         k1_override, k2_override, cyl_override,
+        mode,
       } = req.body
 
+      const isManualMode = mode === 'manual'
       const k1Override  = k1_override  != null && k1_override  !== '' ? Number(k1_override)  : null
       const k2Override  = k2_override  != null && k2_override  !== '' ? Number(k2_override)  : null
       const cylOverride = cyl_override != null && cyl_override !== '' ? Number(cyl_override) : null
@@ -242,7 +244,7 @@ app.post(
       let extractedValues     = {}
       let ocrExtractionStatus = {}
 
-      if (files?.topography?.[0] || files?.pachymetry?.[0]) {
+      if (!isManualMode && (files?.topography?.[0] || files?.pachymetry?.[0])) {
         try {
           const ocrForm = new FormData()
           ocrForm.append('eye', normalizedEye || 'OD')
@@ -260,11 +262,14 @@ app.post(
             })
           }
 
+          const ocrAbort = new AbortController()
+          const ocrTimer = setTimeout(() => ocrAbort.abort(), 180_000) // 3 min — EasyOCR is slow on first load
           const ocrRes = await fetch(`${FLASK_URL}/api/extract`, {
             method : 'POST',
             body   : ocrForm,
             headers: ocrForm.getHeaders(),
-          })
+            signal : ocrAbort.signal,
+          }).finally(() => clearTimeout(ocrTimer))
 
           if (ocrRes.ok) {
             const ocrData        = await ocrRes.json()
@@ -327,6 +332,8 @@ app.post(
       console.log(`K1=${k1} Corneal Astigmatism (Cyl)=${astig} K2=${k2} CCT=${cct}`)
 
       // ── Step 4: Call Flask ML model ─────────────────────────────
+      const mlAbort = new AbortController()
+      const mlTimer = setTimeout(() => mlAbort.abort(), 30_000) // 30 s
       const mlRes = await fetch(`${FLASK_URL}/api/predict`, {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -340,7 +347,8 @@ app.post(
           axis_degrees         : Number(axis_degrees),
           visual_acuity_decimal: bcva_decimal,
         }),
-      })
+        signal : mlAbort.signal,
+      }).finally(() => clearTimeout(mlTimer))
 
       if (!mlRes.ok) {
         const err = await mlRes.json().catch(() => ({}))
@@ -371,18 +379,31 @@ app.post(
       })
 
       // ── Step 6: Return result to React ──────────────────────────
+      // For fields not extracted by OCR, show the imputed value the model
+      // actually used (from ml.used_features) so the clinician sees a number
+      // rather than 'Not extracted'.
+      const uf = ml.used_features || {}
+      const k1Display    = k1    != null ? `${k1} D`    : (uf.K1_diopters           != null ? `${uf.K1_diopters} D`           : null)
+      const k2Display    = k2    != null ? `${k2} D`    : (uf.K2_diopters           != null ? `${uf.K2_diopters} D`           : null)
+      const astigDisplay = astig != null ? `Corneal Astigmatism (Cyl): ${astig} D`  : (uf.astigmatism_diopters != null ? `Corneal Astigmatism (Cyl): ${uf.astigmatism_diopters} D` : null)
+      const cctDisplay   = cct   != null
+        ? `${cct} µm${cctFromOcrValid == null && overrideCct != null ? ' (manual fallback)' : ''}`
+        : (uf.corneal_thickness_um != null ? `${uf.corneal_thickness_um} µm` : null)
+
+      // True when OCR mode was used but at least one field fell back to imputer defaults
+      const hasEstimatedValues = !isManualMode &&
+        Object.values(extractionStatus).some(s => s === 'not_found')
+
       return res.json({
         recommended  : ml.prediction,
         confidence   : ml.confidence,
         probabilities: ml.probabilities,
         explanation  : EXPLANATIONS[ml.prediction] || '',
         extractedValues: {
-          K1_diopters          : k1 != null ? `${k1} D`    : 'Not extracted',
-          K2_diopters          : k2 != null ? `${k2} D`    : 'Not calculated',
-          astigmatism_diopters : astig != null ? `Corneal Astigmatism (Cyl): ${astig} D` : 'Corneal Astigmatism (Cyl): Not extracted',
-          corneal_thickness_um : cct != null
-            ? `${cct} µm${cctFromOcrValid == null && overrideCct != null ? ' (manual fallback)' : ''}`
-            : 'Not extracted',
+          K1_diopters          : k1Display,
+          K2_diopters          : k2Display,
+          astigmatism_diopters : astigDisplay,
+          corneal_thickness_um : cctDisplay,
           ucva: `${ucva_logmar} logMAR → ${ucva_decimal} decimal`,
           bcva: `${bcva_logmar} logMAR → ${bcva_decimal} decimal`,
         },
@@ -393,6 +414,8 @@ app.post(
         recordId: String(insertResult?.insertedId ?? ''),
         timestamp      : new Date().toISOString(),
         extractionStatus,
+        hasEstimatedValues,
+        submissionMode: isManualMode ? 'manual' : 'ocr',
       })
 
     } catch (error) {

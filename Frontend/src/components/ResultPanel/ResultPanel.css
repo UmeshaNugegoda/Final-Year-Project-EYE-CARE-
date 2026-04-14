@@ -174,3 +174,23 @@
   background: #FFE4CC;
   color: #8B3A00;
 }
+.estimation-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #FFF3CD;
+  border: 1px solid #ffc107;
+  border-left: 4px solid #e65c00;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #7a3800;
+  line-height: 1.5;
+}
+
+.estimation-disclaimer-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}

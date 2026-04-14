@@ -1,9 +1,18 @@
 """
-EasyOCR reader singleton and main run_ocr orchestration function.
+EasyOCR subprocess runner and main run_ocr orchestration function.
+
+EasyOCR is executed in a short-lived child process (_ocr_worker.py) so that
+the ~1.5 GB of PyTorch weights are fully released after each request. This
+prevents RAM accumulation and process crashes on consecutive predictions.
 """
 import re
+import os
+import sys
+import json
+import subprocess
+import tempfile
 
-from .preprocessing import _preprocess_pachymetry_for_ocr, _preprocess_topography_for_ocr
+from .preprocessing import _preprocess_pachymetry_for_ocr, _preprocess_topography_for_ocr, get_color_layer_for_topography
 from .utils import (
     infer_eye_from_text,
     _normalize_k_diopters,
@@ -33,27 +42,58 @@ from .cct import (
     _extract_pachy_from_chunks,
 )
 
-# ── EasyOCR singleton ─────────────────────────────────────────────────────────
-
-_reader = None
+_WORKER = os.path.join(os.path.dirname(__file__), "_ocr_worker.py")
 
 
-def get_reader():
-    global _reader
-    if _reader is None:
-        import easyocr
-        print("Loading EasyOCR...")
-        _reader = easyocr.Reader(["en"], gpu=False, verbose=False)
-    return _reader
+def _run_ocr_subprocess(src):
+    """
+    Run EasyOCR in an isolated subprocess.
+
+    src: file path (str) or preprocessed numpy array.
+    Returns list of [bbox, text, confidence] as plain Python types.
+    Memory is released automatically when the child process exits.
+    """
+    tmp_path = None
+    if not isinstance(src, str):
+        import cv2
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        tmp_path = tmp.name
+        tmp.close()
+        cv2.imwrite(tmp_path, src)
+        image_path = tmp_path
+    else:
+        image_path = src
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, _WORKER, image_path],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if proc.returncode != 0:
+            print(f"[OCR worker] exit {proc.returncode}: {proc.stderr[:400]}")
+            return []
+        return json.loads(proc.stdout)
+    except subprocess.TimeoutExpired:
+        print("[OCR worker] timed out after 300 s")
+        return []
+    except Exception as e:
+        print(f"[OCR worker] failed: {e}")
+        return []
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 # ── Main OCR function ─────────────────────────────────────────────────────────
 
 def run_ocr(image_path, image_type, eye):
-    reader = get_reader()
     extracted = {}
     try:
-        raw_src = image_path
         pre_src = None
 
         if image_type == "pachymetry":
@@ -67,41 +107,53 @@ def run_ocr(image_path, image_type, eye):
             except Exception as e:
                 print(f"Preprocess OCR failed ({image_type}): {e}")
 
-        primary_src = pre_src if pre_src is not None else raw_src
-        primary_results = reader.readtext(primary_src, detail=1)
+        primary_src = pre_src if pre_src is not None else image_path
+
+        # Capture image width before passing to subprocess (needed for pachymetry
+        # column splitting). Read from array shape or from file on disk.
+        img_w = 0
+        if image_type == "pachymetry":
+            if hasattr(primary_src, "shape"):
+                img_w = primary_src.shape[1]
+            else:
+                try:
+                    import cv2 as _cv2
+                    _im = _cv2.imread(str(primary_src))
+                    img_w = _im.shape[1] if _im is not None else 0
+                except Exception:
+                    pass
+
+        primary_results = _run_ocr_subprocess(primary_src)
 
         # Pachymetry reports (Zeiss CIRRUS etc.) print OD and OS tables
         # side-by-side. Without column splitting, the spatial sort interleaves
         # both tables row-by-row, making eye section detection unreliable.
         if image_type == "pachymetry":
-            import cv2 as _cv2
-            _src_arr = primary_src if isinstance(primary_src, str) else None
-            if _src_arr is not None:
-                _im = _cv2.imread(_src_arr)
-                _img_w = _im.shape[1] if _im is not None else 0
-            else:
-                _img_w = primary_src.shape[1] if hasattr(primary_src, 'shape') else 0
-            eye_results = _split_ocr_by_column(primary_results, _img_w, (eye or "OD").upper())
+            eye_results = _split_ocr_by_column(primary_results, img_w, (eye or "OD").upper())
             chunks = _spatially_sorted_chunks(eye_results)
         else:
             chunks = _spatially_sorted_chunks(primary_results)
 
-        # For topography also run OCR on the original image and append its text
-        # to improve regex coverage, but do NOT mix its chunks into the index-
-        # based chunk list (that would double every value and break column logic).
-        extra_text = ""
-        if image_type == "topography" and pre_src is not None:
-            try:
-                raw_results = reader.readtext(raw_src, detail=1)
-                raw_chunks = _spatially_sorted_chunks(raw_results)
-                extra_text = " " + " ".join(raw_chunks)
-            except Exception as e:
-                print(f"Secondary OCR pass failed: {e}")
-
-        text = " ".join(chunks) + extra_text
+        text = " ".join(chunks)
         effective_eye = infer_eye_from_text(text, eye)
         safe_preview = text[:250].encode("ascii", errors="ignore").decode("ascii", errors="ignore")
         print(f"[OCR/{image_type}/{eye}->{effective_eye}] {safe_preview}")
+
+        # For topography: if K values not found in greyscale pass, try the
+        # colour-layer extraction as a lightweight fallback.
+        if image_type == "topography":
+            sep = _extract_keratometry_separate(text, chunks, effective_eye)
+            if sep.get("K1_diopters") is None and sep.get("K2_diopters") is None:
+                try:
+                    color_src = get_color_layer_for_topography(image_path)
+                    if color_src is not None:
+                        color_results = _run_ocr_subprocess(color_src)
+                        color_chunks = _spatially_sorted_chunks(color_results)
+                        text = text + " " + " ".join(color_chunks)
+                        chunks = chunks + color_chunks
+                        print(f"[OCR/topography colour-fallback] {len(color_chunks)} extra chunks")
+                except Exception as e:
+                    print(f"Colour-layer fallback failed: {e}")
 
         if image_type == "topography":
             cyl_val = _best_corneal_cyl_diopter(_collect_cyl_candidates_from_text(text))

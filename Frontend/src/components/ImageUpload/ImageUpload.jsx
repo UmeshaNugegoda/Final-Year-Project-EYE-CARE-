@@ -11,16 +11,22 @@ const QUALITY_TIPS = [
   { icon: 'ℹ️', text: 'Handwritten reports are not currently supported. Enter those values manually in the fields below.' },
 ]
 
-function ImageUpload({ images, handleImageUpload, removeImage, qualityWarnings = {}, qualityChecking = {} }) {
+function ImageUpload({ images, handleImageUpload, removeImage, qualityWarnings = {}, qualityChecking = {}, submissionMode = null }) {
   const [tipsOpen, setTipsOpen] = useState(false)
 
   return (
     <section className="image-upload-section">
       <h2 className="section-title">Report Images</h2>
-      <p className="section-note">
-        K1/Kf, K2/Ks, Corneal Astigmatism (Cyl), and Central Corneal Thickness are extracted automatically
-        from these images using OCR. You do not need to enter them manually.
-      </p>
+      {submissionMode === 'manual' ? (
+        <p className="section-note manual-entry-note">
+          ✎ Manual entry selected — images are not required. Enter K1, K2, CYL, and CCT in the fields below.
+        </p>
+      ) : (
+        <p className="section-note">
+          K1/Kf, K2/Ks, Corneal Astigmatism (Cyl), and Central Corneal Thickness are extracted automatically
+          from these images using OCR. You do not need to enter them manually.
+        </p>
+      )}
 
       {/* ── Image quality guidance ──────────────────────────── */}
       <div className="img-guidance-banner">
@@ -47,7 +53,13 @@ function ImageUpload({ images, handleImageUpload, removeImage, qualityWarnings =
         )}
       </div>
 
-      <div className="image-upload-grid">
+      {submissionMode === 'manual' && (
+        <div className="manual-entry-selected-card">
+          Images will not be processed. Values entered in the fields below will be used directly.
+        </div>
+      )}
+
+      <div className={`image-upload-grid${submissionMode === 'manual' ? ' upload-grid-hidden' : ''}`}>
 
         {/* ── Topography ─────────────────────────────────────── */}
         <div className="upload-card">

@@ -32,6 +32,11 @@ tests/
 **/*.test.*
 **/*.spec.*
 
+# Office documents
+*.docx
+*.xlsx
+*.pptx
+
 # Generated test assets
 test_images/
 **/test_images/
@@ -43,3 +48,6 @@ __pycache__/
 *.pyo
 venv/
 **/venv/
+
+# Documentation
+docs/

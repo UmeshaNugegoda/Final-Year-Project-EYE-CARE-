@@ -7,7 +7,7 @@ import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-from ocr.reader import run_ocr, get_reader
+from ocr.reader import run_ocr, _run_ocr_subprocess
 from ocr.utils import calculate_k2
 from ocr.preprocessing import _analyze_image_quality
 
@@ -131,10 +131,27 @@ def predict():
         idx     = MODEL.predict(row_sc)[0]
         probs   = MODEL.predict_proba(row_sc)[0]
         label   = LE.inverse_transform([idx])[0]
+
+        # Build a dict of the actual values used (post-imputation) so the
+        # frontend can display estimated values alongside extracted ones.
+        feature_map = {
+            "K1_Flat"              : "K1_diopters",
+            "K2_Steep"             : "K2_diopters",
+            "astigmatism_diopters" : "astigmatism_diopters",
+            "corneal_thickness_um" : "corneal_thickness_um",
+        }
+        used_features = {}
+        for feat_name, out_key in feature_map.items():
+            if feat_name in FEATURES:
+                fi = FEATURES.index(feat_name)
+                val = float(row_imp[0][fi])
+                used_features[out_key] = round(val, 2)
+
         return jsonify({
             "prediction"   : label,
             "confidence"   : round(float(max(probs)) * 100, 1),
             "probabilities": {c: round(float(p) * 100, 1) for c, p in zip(LE.classes_, probs)},
+            "used_features": used_features,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -148,8 +165,6 @@ def health():
 @app.route("/api/debug", methods=["POST"])
 def debug():
     """Temporary route — shows raw OCR text from uploaded images."""
-    eye    = request.form.get("eye", "OD").upper()
-    reader = get_reader()
     result = {}
     for img_key in ["topography", "pachymetry"]:
         if img_key in request.files:
@@ -161,7 +176,8 @@ def debug():
             tmp.close()
             f.save(tmp_path)
             try:
-                chunks = reader.readtext(tmp_path, detail=0)
+                raw = _run_ocr_subprocess(tmp_path)
+                chunks = [item[1] for item in raw]
                 result[img_key] = {
                     "full_text": " ".join(chunks),
                     "chunks"   : chunks,

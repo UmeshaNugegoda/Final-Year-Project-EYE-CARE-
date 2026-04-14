@@ -48,6 +48,12 @@ function ResultPanel({ result }) {
       .map(([label, prob]) => `<tr><td>${escapeHtml(label)}</td><td>${Number(prob).toFixed(1)}%</td></tr>`)
       .join('')
 
+    const estimationWarning = result.hasEstimatedValues
+      ? `<div style="background:#FFF3CD;border:1px solid #ffc107;border-left:4px solid #e65c00;border-radius:6px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#7a3800;">
+           <strong>⚠ Contains estimated values</strong> — one or more corneal measurements could not be extracted and were replaced with population averages. Not suitable for clinical decision-making without manual verification.
+         </div>`
+      : ''
+
     const html = `
       <html>
         <head>
@@ -66,6 +72,7 @@ function ResultPanel({ result }) {
         <body>
           <h1>Post-DALK Prediction Report</h1>
           <div class="meta">Generated: ${escapeHtml(new Date().toLocaleString())}</div>
+          ${estimationWarning}
           <div class="box">
             <div class="row"><strong>Patient ID:</strong> ${escapeHtml(String(result.patientId || '-'))}</div>
             <div class="row"><strong>Eye:</strong> ${escapeHtml(String(result.eye || '-'))}</div>
@@ -107,6 +114,18 @@ function ResultPanel({ result }) {
   return (
     <section className="result-panel" style={{ '--rb':colors.bg, '--ra':colors.accent }}>
       <h2 className="section-title">Prediction Result</h2>
+
+      {result.hasEstimatedValues && (
+        <div className="estimation-disclaimer">
+          <span className="estimation-disclaimer-icon">⚠</span>
+          <div>
+            <strong>Contains estimated values</strong> — one or more corneal measurements
+            could not be extracted from the uploaded images and were replaced with
+            population averages. This result is <strong>not suitable for clinical
+            decision-making without manual verification</strong> of the extracted values above.
+          </div>
+        </div>
+      )}
 
       <div className="result-content">
 
