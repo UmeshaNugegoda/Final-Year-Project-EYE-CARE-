@@ -75,6 +75,19 @@ def extract():
             key: ("extracted" if extracted.get(key) is not None else "not_found")
             for key in ["K1_diopters", "K2_diopters", "astigmatism_diopters", "corneal_thickness_um"]
         }
+
+        # ── Eye measurements report (third scanner) ───────────────
+        eye_meas_file = request.files.get("eye_measurements")
+        if eye_meas_file:
+            from ocr.eye_measurements_extractor import extract_eye_measurements
+            em_result = extract_eye_measurements(eye_meas_file.read(), eye=eye)
+            em_status = em_result.pop("eye_extraction_status", {})
+            # Merge into extracted + status
+            for field in ["ucva_snellen", "bcva_snellen", "sphere_diopters", "cylinder_diopters", "axis_degrees"]:
+                if em_result.get(field) is not None:
+                    extracted[field] = em_result[field]
+            extraction_status.update(em_status)
+
         return jsonify({"extracted": extracted, "eye": eye, "extraction_status": extraction_status})
     except Exception as e:
         return jsonify({"error": str(e), "extracted": {}}), 500
@@ -90,7 +103,7 @@ def extract():
 @app.route("/api/analyze-quality", methods=["POST"])
 def analyze_quality():
     """Lightweight image quality check — no OCR, sub-second response."""
-    result = {"warnings": {"topography": [], "pachymetry": []}}
+    result = {"warnings": {"topography": [], "pachymetry": [], "eye_measurements": []}}
     temps = []
     try:
         for img_key in ["topography", "pachymetry"]:

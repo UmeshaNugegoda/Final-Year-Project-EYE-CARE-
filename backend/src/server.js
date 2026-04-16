@@ -193,10 +193,10 @@ app.post(
         headers: qualityForm.getHeaders(),
       })
       if (r.ok) return res.json(await r.json())
-      return res.json({ warnings: { topography: [], pachymetry: [] } })
+      return res.json({ warnings: { topography: [], pachymetry: [], eye_measurements: [] } })
     } catch (err) {
       console.warn('Quality check (non-fatal):', err.message)
-      return res.json({ warnings: { topography: [], pachymetry: [] } })
+      return res.json({ warnings: { topography: [], pachymetry: [], eye_measurements: [] } })
     }
   }
 )
@@ -204,8 +204,9 @@ app.post(
 app.post(
   '/api/predictions',
   upload.fields([
-    { name: 'topography', maxCount: 1 },
-    { name: 'pachymetry', maxCount: 1 },
+    { name: 'topography',       maxCount: 1 },
+    { name: 'pachymetry',       maxCount: 1 },
+    { name: 'eye_measurements', maxCount: 1 },
   ]),
   async (req, res) => {
     try {
@@ -259,6 +260,12 @@ app.post(
             ocrForm.append('pachymetry', files.pachymetry[0].buffer, {
               filename   : files.pachymetry[0].originalname,
               contentType: files.pachymetry[0].mimetype,
+            })
+          }
+          if (files?.eye_measurements?.[0]) {
+            ocrForm.append('eye_measurements', files.eye_measurements[0].buffer, {
+              filename   : files.eye_measurements[0].originalname,
+              contentType: files.eye_measurements[0].mimetype,
             })
           }
 
@@ -390,9 +397,30 @@ app.post(
         ? `${cct} µm${cctFromOcrValid == null && overrideCct != null ? ' (manual fallback)' : ''}`
         : (uf.corneal_thickness_um != null ? `${uf.corneal_thickness_um} µm` : null)
 
-      // True when OCR mode was used but at least one field fell back to imputer defaults
+      // Eye measurements OCR fields (from third scanner)
+      const ocrUcva     = extractedValues.ucva_snellen      || null
+      const ocrBcva     = extractedValues.bcva_snellen      || null
+      const ocrSphere   = extractedValues.sphere_diopters   != null ? Number(extractedValues.sphere_diopters)   : null
+      const ocrCylinder = extractedValues.cylinder_diopters != null ? Number(extractedValues.cylinder_diopters) : null
+      const ocrAxis     = extractedValues.axis_degrees      != null ? Number(extractedValues.axis_degrees)      : null
+
+      // Add eye-measurement extraction statuses
+      for (const f of ['ucva_snellen', 'bcva_snellen', 'sphere_diopters', 'cylinder_diopters', 'axis_degrees']) {
+        if (!(f in extractionStatus)) extractionStatus[f] = 'not_found'
+      }
+
+      // True when OCR mode was used but at least one corneal field fell back to imputer defaults
       const hasEstimatedValues = !isManualMode &&
-        Object.values(extractionStatus).some(s => s === 'not_found')
+        ['K1_diopters','K2_diopters','astigmatism_diopters','corneal_thickness_um']
+          .some(f => extractionStatus[f] === 'not_found')
+
+      // Build display values including eye-measurement OCR fields
+      const ucvaDisplay = ocrUcva
+        ? `${ocrUcva} (OCR) → logMAR ${ucva_logmar} → decimal ${ucva_decimal}`
+        : `${ucva_logmar} logMAR → ${ucva_decimal} decimal`
+      const bcvaDisplay = ocrBcva
+        ? `${ocrBcva} (OCR) → logMAR ${bcva_logmar} → decimal ${bcva_decimal}`
+        : `${bcva_logmar} logMAR → ${bcva_decimal} decimal`
 
       return res.json({
         recommended  : ml.prediction,
@@ -404,8 +432,11 @@ app.post(
           K2_diopters          : k2Display,
           astigmatism_diopters : astigDisplay,
           corneal_thickness_um : cctDisplay,
-          ucva: `${ucva_logmar} logMAR → ${ucva_decimal} decimal`,
-          bcva: `${bcva_logmar} logMAR → ${bcva_decimal} decimal`,
+          ucva                 : ucvaDisplay,
+          bcva                 : bcvaDisplay,
+          ...(ocrSphere   != null ? { sphere_diopters:   `${ocrSphere} D (OCR)` }   : {}),
+          ...(ocrCylinder != null ? { cylinder_diopters: `${ocrCylinder} D (OCR)` } : {}),
+          ...(ocrAxis     != null ? { axis_degrees:      `${ocrAxis}°  (OCR)` }     : {}),
         },
         patientId: normalizedPatientId,
         eye: normalizedEye,

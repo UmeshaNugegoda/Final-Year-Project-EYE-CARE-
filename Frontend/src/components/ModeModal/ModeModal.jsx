@@ -2,9 +2,9 @@ import React from 'react'
 import './ModeModal.css'
 
 function ModeModal({ qualityWarnings = {}, onModeSelect }) {
-  // Collect all unique warnings across both image types
+  // Collect all unique warnings across all three image types
   const allWarnings = []
-  for (const type of ['topography', 'pachymetry']) {
+  for (const type of ['topography', 'pachymetry', 'eye_measurements']) {
     for (const w of qualityWarnings[type] || []) {
       if (!allWarnings.find(x => x.code === w.code)) allWarnings.push(w)
     }

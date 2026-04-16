@@ -113,11 +113,11 @@ function PatientHistory({ auth, onLogout }) {
   }
 
   return (
-    <div className="history-page">
-      <Header auth={auth} onLogout={onLogout} />
-      <div className="layout-shell">
-        <Sidebar auth={auth} />
-        <main className="layout-main">
+    <div className="app-shell">
+      <Sidebar auth={auth} />
+      <div className="app-main">
+        <Header auth={auth} onLogout={onLogout} title="Patient History" />
+        <main className="page-content">
           <div className="history-container">
         <section className="history-summary-card">
           <div className="history-summary-main">

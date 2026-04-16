@@ -4,19 +4,30 @@ import { snellenToLogmar, snellenToDecimal } from '../../utils/visualAcuity'
 
 function NumericInputs({ formData, handleInputChange, submissionMode = null }) {
   const isManual = submissionMode === 'manual'
-  return (
-    <section className="numeric-inputs-section">
 
-      {/* ── Visual Acuity ─────────────────────────────────────── */}
+  return (
+    <section className="form-card measure-card">
+      <div className="form-card-header">
+        <h2 className="form-card-title">
+          {isManual ? 'Manual Measurement Entry' : 'Measurements'}
+        </h2>
+        <p className="form-card-subtitle">
+          {isManual
+            ? 'Enter all values directly from the printed report'
+            : 'Visual acuity and refraction — K1/K2/CYL/CCT extracted from images automatically'}
+        </p>
+      </div>
+
+      {/* ── Visual Acuity ── */}
       <div className="input-group">
-        <h2 className="section-title">Visual Acuity (Snellen)</h2>
+        <h3 className="input-group-title">Visual Acuity (Snellen)</h3>
         <p className="section-note">
-          Use Snellen (e.g. 6/6, 6/6-, 6/6+, 20/20), or CF / HM per the Complete Visual Acuity Scoring System. logMAR and decimal follow the reference table.
+          Use Snellen (e.g. 6/6, 6/60, 20/20), or CF / HM. logMAR preview shown live.
         </p>
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="ucva">
-              UCVA (Snellen)
+              UCVA
               <span className="field-hint">Unaided — e.g. 6/60</span>
             </label>
             <input type="text" id="ucva" name="ucva"
@@ -25,7 +36,7 @@ function NumericInputs({ formData, handleInputChange, submissionMode = null }) {
           </div>
           <div className="form-group">
             <label htmlFor="bcva">
-              BCVA (Snellen)
+              BCVA
               <span className="field-hint">Best corrected — e.g. 6/9</span>
             </label>
             <input type="text" id="bcva" name="bcva"
@@ -34,7 +45,6 @@ function NumericInputs({ formData, handleInputChange, submissionMode = null }) {
           </div>
         </div>
 
-        {/* Live logMAR preview */}
         {(formData.ucva !== '' || formData.bcva !== '') && (
           <div className="snellen-preview">
             {formData.ucva !== '' && (
@@ -57,9 +67,9 @@ function NumericInputs({ formData, handleInputChange, submissionMode = null }) {
         )}
       </div>
 
-      {/* ── Auto-Refraction ───────────────────────────────────── */}
+      {/* ── Auto-Refraction ── */}
       <div className="input-group">
-        <h2 className="section-title">Auto-Refraction</h2>
+        <h3 className="input-group-title">Auto-Refraction</h3>
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="sphere">Sphere (D)</label>
@@ -82,99 +92,72 @@ function NumericInputs({ formData, handleInputChange, submissionMode = null }) {
         </div>
       </div>
 
-      {/* ── Topography & Pachymetry Values ───────────────────── */}
+      {/* ── Topography & Pachymetry overrides ── */}
       <div className="input-group">
-        <h2 className="section-title">
-          {isManual ? 'Manual Measurement Entry' : 'Topography & Pachymetry Values'}
-        </h2>
+        <h3 className="input-group-title">
+          {isManual ? 'Corneal Measurements' : 'Topography & Pachymetry Values'}
+        </h3>
         {isManual ? (
           <div className="manual-notice">
             <span className="manual-badge">MANUAL</span>
             <p>
-              OCR is skipped. Enter the values from your printed report directly.
-              K2 will be calculated as K1 + CYL if not entered.
+              OCR is skipped. Enter values from your printed report.
+              K2 is calculated as K1 + |CYL| if not entered.
             </p>
           </div>
         ) : (
           <div className="auto-notice">
             <span className="auto-badge">AUTO</span>
             <p>
-              K1/Kf, K2/Ks, Corneal Astigmatism (Cyl), and Central Corneal Thickness (CCT) are
-              extracted automatically from the uploaded report images using OCR.
-              K2 is used directly when extracted; if not available, it is calculated as K1 + Corneal Astigmatism (Cyl). No manual entry needed.
+              K1/Kf, K2/Ks, Corneal Cyl, and CCT are extracted from uploaded images.
+              Use these fields only to correct an incorrect OCR value.
             </p>
           </div>
         )}
+
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="k1Override">
               {isManual ? 'K1 / Flat K (D)' : 'K1 Override (D)'}
-              {!isManual && <span className="field-hint">Optional — only if OCR value is wrong</span>}
+              {!isManual && <span className="field-hint">Override if OCR is wrong</span>}
             </label>
-            <input
-              type="number"
-              id="k1Override"
-              name="k1Override"
-              value={formData.k1Override || ''}
-              onChange={handleInputChange}
-              placeholder={isManual ? 'e.g. 42.18' : 'Optional'}
-              step="0.01"
-            />
+            <input type="number" id="k1Override" name="k1Override"
+              value={formData.k1Override || ''} onChange={handleInputChange}
+              placeholder={isManual ? 'e.g. 42.18' : 'Optional'} step="0.01" />
           </div>
           <div className="form-group">
             <label htmlFor="k2Override">
               {isManual ? 'K2 / Steep K (D)' : 'K2 Override (D)'}
               {!isManual && <span className="field-hint">Optional</span>}
             </label>
-            <input
-              type="number"
-              id="k2Override"
-              name="k2Override"
-              value={formData.k2Override || ''}
-              onChange={handleInputChange}
-              placeholder={isManual ? 'e.g. 44.21' : 'Optional'}
-              step="0.01"
-            />
+            <input type="number" id="k2Override" name="k2Override"
+              value={formData.k2Override || ''} onChange={handleInputChange}
+              placeholder={isManual ? 'e.g. 44.21' : 'Optional'} step="0.01" />
           </div>
           <div className="form-group">
             <label htmlFor="cylOverride">
-              {isManual ? 'Corneal Cyl / CYL (D)' : 'Cyl Override (D)'}
+              {isManual ? 'Corneal Cyl (D)' : 'Cyl Override (D)'}
               {!isManual && <span className="field-hint">Optional</span>}
             </label>
-            <input
-              type="number"
-              id="cylOverride"
-              name="cylOverride"
-              value={formData.cylOverride || ''}
-              onChange={handleInputChange}
+            <input type="number" id="cylOverride" name="cylOverride"
+              value={formData.cylOverride || ''} onChange={handleInputChange}
               placeholder={isManual ? 'e.g. 2.03' : 'Optional'}
-              step="0.01"
-              min="0"
-              max="10"
-            />
+              step="0.01" min="0" max="10" />
           </div>
         </div>
+
         <div className="form-row">
           <div className="form-group">
             <label htmlFor="cornealThickness">
-              {isManual ? 'Central Corneal Thickness (µm)' : 'Central Corneal Thickness Fallback (um)'}
-              {!isManual && <span className="field-hint">Optional, only if OCR fails (e.g. 424 or 566)</span>}
+              {isManual ? 'CCT (µm)' : 'CCT Fallback (µm)'}
+              {!isManual && <span className="field-hint">Optional, only if OCR fails</span>}
             </label>
-            <input
-              type="number"
-              id="cornealThickness"
-              name="cornealThickness"
-              value={formData.cornealThickness || ''}
-              onChange={handleInputChange}
-              placeholder={isManual ? 'e.g. 520' : 'Optional'}
-              min="250"
-              max="800"
-              step="1"
-            />
+            <input type="number" id="cornealThickness" name="cornealThickness"
+              value={formData.cornealThickness || ''} onChange={handleInputChange}
+              placeholder={isManual ? 'e.g. 520' : 'Optional'} min="250" max="800" step="1" />
           </div>
         </div>
       </div>
-
     </section>
   )
 }

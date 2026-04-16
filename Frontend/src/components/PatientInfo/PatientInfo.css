@@ -1,69 +1,120 @@
-.patient-info-section {
-  background: var(--background-white);
-  border-radius: 12px;
-  padding: 30px;
-  margin-bottom: 25px;
-  box-shadow: 0 2px 8px var(--shadow-light);
-  border: 1px solid var(--border-color);
+/* ── Shared card base used across prediction form sections ── */
+.form-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px 28px;
+  border-left: 4px solid transparent;
 }
 
-.section-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--primary-green-dark);
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--primary-green-light);
+.patient-card   { border-left-color: var(--stripe-patient); }
+.scanner-card   { border-left-color: var(--stripe-scanner); }
+.measure-card   { border-left-color: var(--stripe-measurements); }
+
+.form-card-header { margin-bottom: 20px; }
+
+.form-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 3px;
 }
 
-.form-row {
+.form-card-subtitle {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+/* ── 3-column row ── */
+.form-row-3 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: 2fr 1fr 1.5fr;
+  gap: 16px;
 }
 
+/* ── Generic form group ── */
 .form-group {
   display: flex;
   flex-direction: column;
+  gap: 6px;
 }
 
 .form-group label {
-  font-weight: 500;
-  color: var(--primary-green-dark);
-  margin-bottom: 8px;
-  font-size: 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .form-group input,
 .form-group select {
-  padding: 12px 16px;
-  border: 2px solid var(--border-color);
-  border-radius: 8px;
-  font-size: 1rem;
-  transition: all 0.3s ease;
-  background: var(--background-white);
-  color: var(--text-dark);
+  padding: 10px 13px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
   font-family: inherit;
+  height: 40px;
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: var(--primary-green);
-  box-shadow: 0 0 0 3px var(--shadow-light);
+  border-color: var(--color-border-focus);
+  box-shadow: var(--shadow-focus);
 }
 
-.form-group input::placeholder {
-  color: var(--text-light);
+.form-group input::placeholder { color: var(--color-text-muted); }
+
+/* ── Eye segmented control ── */
+.eye-segmented {
+  display: flex;
+  gap: 0;
+  height: 40px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-bg);
 }
 
-@media (max-width: 768px) {
-  .patient-info-section {
-    padding: 20px;
-  }
-
-  .form-row {
-    grid-template-columns: 1fr;
-  }
+.eye-seg-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
 }
 
+.eye-seg-btn:first-child { border-right: 1px solid var(--color-border); }
+
+.eye-seg-btn.active {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.eye-seg-btn:not(.active):hover {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+.eye-seg-sub {
+  font-size: 0.7rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+@media (max-width: 640px) {
+  .form-row-3 { grid-template-columns: 1fr 1fr; }
+  .form-row-3 > .form-group:first-child { grid-column: 1 / -1; }
+}

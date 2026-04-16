@@ -60,11 +60,11 @@ function Admin({ auth, onLogout }) {
   }
 
   return (
-    <div className="admin-page">
-      <Header auth={auth} onLogout={onLogout} />
-      <div className="layout-shell">
-        <Sidebar auth={auth} />
-        <main className="layout-main">
+    <div className="app-shell">
+      <Sidebar auth={auth} />
+      <div className="app-main">
+        <Header auth={auth} onLogout={onLogout} title="Admin" />
+        <main className="page-content">
           <div className="admin-container">
         <div className="admin-card">
           <h2 className="admin-title">User Management</h2>

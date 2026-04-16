@@ -102,11 +102,11 @@ function Dashboard({ auth, onLogout }) {
   }
 
   return (
-    <div className="dashboard-page">
-      <Header auth={auth} onLogout={onLogout} />
-      <div className="layout-shell">
-        <Sidebar auth={auth} />
-        <main className="layout-main">
+    <div className="app-shell">
+      <Sidebar auth={auth} />
+      <div className="app-main">
+        <Header auth={auth} onLogout={onLogout} title="Dashboard" />
+        <main className="page-content">
           <div className="dashboard-container">
             <section className="dashboard-section">
               <h2 className="dashboard-section-title">Dashboard Overview</h2>
@@ -206,3 +206,4 @@ function Dashboard({ auth, onLogout }) {
 }
 
 export default Dashboard
+

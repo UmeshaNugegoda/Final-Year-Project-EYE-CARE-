@@ -1,189 +1,154 @@
 import React, { useState } from 'react'
 import './ImageUpload.css'
 
-const QUALITY_TIPS = [
-  { icon: '✅', text: 'Digital export or screenshot directly from the device software gives the best results.' },
-  { icon: '✅', text: 'If photographing a printout, ensure the page is flat, well-lit, and the camera is directly above it.' },
-  { icon: '✅', text: 'Higher resolution helps — try to capture the full report page without cropping edge values.' },
-  { icon: '⚠️', text: 'Blurry or low-contrast photos reduce accuracy. If OCR extraction looks wrong, enter the value manually in the fallback field below.' },
-  { icon: '⚠️', text: 'Photos taken at an angle may cause columns to be misread. Keep the camera parallel to the printout.' },
-  { icon: '⚠️', text: 'Torn, folded, or punched pages can obscure values — check extracted results carefully.' },
-  { icon: 'ℹ️', text: 'Handwritten reports are not currently supported. Enter those values manually in the fields below.' },
+const WARNING_DETAIL = {
+  blurry          : 'Image appears blurry. OCR accuracy will be reduced — use a digital export if possible.',
+  low_resolution  : 'Image resolution is below 800 px on one side. Higher resolution improves extraction.',
+  hole_punch      : 'Hole-punch marks detected. These can obscure values near page edges.',
+  angled          : 'Page appears to be photographed at an angle. Keep the camera directly above the report.',
+  edge_clipping   : 'Dark borders suggest the image is clipped. Ensure the full report is visible.',
+}
+
+const WARNING_LABELS = {
+  blurry         : 'Blurry',
+  low_resolution : 'Low resolution',
+  hole_punch     : 'Hole punches',
+  angled         : 'Angled',
+  edge_clipping  : 'Edge clipping',
+}
+
+const SCANNERS = [
+  {
+    key     : 'topography',
+    title   : 'Topography Report',
+    badge   : 'Extracts K1 · K2 · Corneal Cyl',
+    hint    : 'Click to upload topography image',
+  },
+  {
+    key     : 'pachymetry',
+    title   : 'Pachymetry Report',
+    badge   : 'Extracts CCT',
+    hint    : 'Click to upload pachymetry image',
+  },
+  {
+    key     : 'eye_measurements',
+    title   : 'Eye Measurements Report',
+    badge   : 'Extracts SPH · CYL · AXIS · UCVA · BCVA',
+    hint    : 'Click to upload refraction report',
+  },
 ]
 
-function ImageUpload({ images, handleImageUpload, removeImage, qualityWarnings = {}, qualityChecking = {}, submissionMode = null }) {
-  const [tipsOpen, setTipsOpen] = useState(false)
-
+function WarningChips({ warnings }) {
+  const [openCode, setOpenCode] = useState(null)
+  if (!warnings || warnings.length === 0) return null
   return (
-    <section className="image-upload-section">
-      <h2 className="section-title">Report Images</h2>
-      {submissionMode === 'manual' ? (
-        <p className="section-note manual-entry-note">
-          ✎ Manual entry selected — images are not required. Enter K1, K2, CYL, and CCT in the fields below.
-        </p>
+    <div className="warning-chips">
+      {warnings.map(w => (
+        <div key={w.code} className="warning-chip-wrap">
+          <button
+            type="button"
+            className="warning-chip"
+            onClick={() => setOpenCode(openCode === w.code ? null : w.code)}
+            aria-expanded={openCode === w.code}
+          >
+            ⚠ {WARNING_LABELS[w.code] || w.code}
+          </button>
+          {openCode === w.code && (
+            <div className="warning-chip-popover">
+              {WARNING_DETAIL[w.code] || w.message}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function UploadCard({ scanner, image, onUpload, onRemove, warnings, checking }) {
+  return (
+    <div className="upload-card">
+      <div className="upload-card-header">
+        <span className="upload-title">{scanner.title}</span>
+        <span className="upload-badge">{scanner.badge}</span>
+      </div>
+
+      {!image ? (
+        <label className="upload-area" htmlFor={`${scanner.key}-input`}>
+          <div className="upload-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <p className="upload-hint">{scanner.hint}</p>
+          <p className="upload-format">JPG or PNG</p>
+          <input
+            type="file" id={`${scanner.key}-input`} accept="image/*"
+            onChange={(e) => onUpload(scanner.key, e)}
+            style={{ display: 'none' }}
+          />
+        </label>
       ) : (
-        <p className="section-note">
-          K1/Kf, K2/Ks, Corneal Astigmatism (Cyl), and Central Corneal Thickness are extracted automatically
-          from these images using OCR. You do not need to enter them manually.
+        <div className="upload-preview">
+          <img src={image.preview} alt={`${scanner.title} preview`} className="preview-image" />
+          <div className="preview-overlay">
+            <span className="preview-filename">{image.file.name}</span>
+            <button className="remove-btn" onClick={() => onRemove(scanner.key)} type="button">
+              Remove
+            </button>
+          </div>
+          {checking && (
+            <div className="quality-checking">
+              <span className="quality-spinner" /> Checking quality…
+            </div>
+          )}
+          <WarningChips warnings={warnings} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ImageUpload({
+  images,
+  handleImageUpload,
+  removeImage,
+  qualityWarnings = {},
+  qualityChecking = {},
+  submissionMode  = null,
+}) {
+  return (
+    <section className="form-card scanner-card">
+      <div className="form-card-header">
+        <h2 className="form-card-title">Scan Reports</h2>
+        <p className="form-card-subtitle">
+          {submissionMode === 'manual'
+            ? 'Manual entry selected — image upload skipped'
+            : 'Upload report images for automatic OCR extraction'}
         </p>
-      )}
-
-      {/* ── Image quality guidance ──────────────────────────── */}
-      <div className="img-guidance-banner">
-        <button
-          type="button"
-          className="img-guidance-toggle"
-          onClick={() => setTipsOpen(o => !o)}
-          aria-expanded={tipsOpen}
-        >
-          <span className="img-guidance-icon">📷</span>
-          <span className="img-guidance-label">Image quality tips for accurate extraction</span>
-          <span className={`img-guidance-chevron ${tipsOpen ? 'open' : ''}`}>▾</span>
-        </button>
-
-        {tipsOpen && (
-          <ul className="img-guidance-list">
-            {QUALITY_TIPS.map((tip, i) => (
-              <li key={i} className="img-guidance-item">
-                <span className="img-guidance-bullet">{tip.icon}</span>
-                <span>{tip.text}</span>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
 
-      {submissionMode === 'manual' && (
-        <div className="manual-entry-selected-card">
-          Images will not be processed. Values entered in the fields below will be used directly.
+      {submissionMode === 'manual' ? (
+        <div className="manual-skip-note">
+          Images will not be processed. Enter values directly in the Measurements section below.
+        </div>
+      ) : (
+        <div className={`upload-grid${submissionMode === 'manual' ? ' upload-grid-hidden' : ''}`}>
+          {SCANNERS.map(s => (
+            <UploadCard
+              key={s.key}
+              scanner={s}
+              image={images[s.key]}
+              onUpload={handleImageUpload}
+              onRemove={removeImage}
+              warnings={qualityWarnings[s.key]}
+              checking={qualityChecking[s.key]}
+            />
+          ))}
         </div>
       )}
-
-      <div className={`image-upload-grid${submissionMode === 'manual' ? ' upload-grid-hidden' : ''}`}>
-
-        {/* ── Topography ─────────────────────────────────────── */}
-        <div className="upload-card">
-          <div className="upload-card-header">
-            <span className="upload-title">Topography Report</span>
-            <span className="upload-badge">Extracts K1/Kf · Corneal Astigmatism (Cyl) · K2/Ks</span>
-          </div>
-
-          {!images.topography ? (
-            <label className="upload-area" htmlFor="topography-input">
-              <div className="upload-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-              </div>
-              <p className="upload-hint">Click to upload topography image</p>
-              <p className="upload-format">JPG or PNG · digital export preferred</p>
-              <input
-                type="file" id="topography-input" accept="image/*"
-                onChange={(e) => handleImageUpload('topography', e)}
-                style={{ display:'none' }}
-              />
-            </label>
-          ) : (
-            <div className="upload-preview">
-              <img
-                src={images.topography.preview}
-                alt="Topography report"
-                className="preview-image"
-              />
-              <div className="preview-overlay">
-                <span className="preview-filename">
-                  {images.topography.file.name}
-                </span>
-                <button
-                  className="remove-btn"
-                  onClick={() => removeImage('topography')}
-                  type="button"
-                >
-                  Remove
-                </button>
-              </div>
-              {qualityChecking.topography && (
-                <div className="quality-checking">
-                  <span className="quality-spinner" /> Checking image quality…
-                </div>
-              )}
-              {qualityWarnings.topography?.length > 0 && (
-                <div className="quality-warnings">
-                  {qualityWarnings.topography.map(w => (
-                    <div key={w.code} className="quality-warning-item">⚠ {w.message}</div>
-                  ))}
-                  <p className="quality-warning-note">Warnings do not block submission. Verify extracted results.</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ── Pachymetry ─────────────────────────────────────── */}
-        <div className="upload-card">
-          <div className="upload-card-header">
-            <span className="upload-title">Pachymetry Report</span>
-            <span className="upload-badge">Extracts Central Corneal Thickness (CCT)</span>
-          </div>
-
-          {!images.pachymetry ? (
-            <label className="upload-area" htmlFor="pachymetry-input">
-              <div className="upload-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-              </div>
-              <p className="upload-hint">Click to upload pachymetry image</p>
-              <p className="upload-format">JPG or PNG · digital export preferred</p>
-              <input
-                type="file" id="pachymetry-input" accept="image/*"
-                onChange={(e) => handleImageUpload('pachymetry', e)}
-                style={{ display:'none' }}
-              />
-            </label>
-          ) : (
-            <div className="upload-preview">
-              <img
-                src={images.pachymetry.preview}
-                alt="Pachymetry report"
-                className="preview-image"
-              />
-              <div className="preview-overlay">
-                <span className="preview-filename">
-                  {images.pachymetry.file.name}
-                </span>
-                <button
-                  className="remove-btn"
-                  onClick={() => removeImage('pachymetry')}
-                  type="button"
-                >
-                  Remove
-                </button>
-              </div>
-              {qualityChecking.pachymetry && (
-                <div className="quality-checking">
-                  <span className="quality-spinner" /> Checking image quality…
-                </div>
-              )}
-              {qualityWarnings.pachymetry?.length > 0 && (
-                <div className="quality-warnings">
-                  {qualityWarnings.pachymetry.map(w => (
-                    <div key={w.code} className="quality-warning-item">⚠ {w.message}</div>
-                  ))}
-                  <p className="quality-warning-note">Warnings do not block submission. Verify extracted results.</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-      </div>
     </section>
   )
 }

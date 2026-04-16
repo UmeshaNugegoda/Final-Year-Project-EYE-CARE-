@@ -1,42 +1,110 @@
 :root {
-  /* Primary light green clinical theme */
-  --primary-green: #6BCF9B;
-  --primary-green-dark: #42A674;
-  --primary-green-light: #C8F5DA;
+  /* ── Core palette ─────────────────────────────── */
+  --color-primary:        #0D7A6F;
+  --color-primary-dark:   #095C54;
+  --color-primary-light:  #E0F5F3;
+  --color-accent:         #1D5FA6;
+  --color-accent-dark:    #154785;
+  --color-accent-light:   #E8F1FB;
 
-  --background-white: #FFFFFF;
-  --accent-gray: #F4F9F6;
+  /* ── Surfaces ─────────────────────────────────── */
+  --color-bg:             #F5F7FA;
+  --color-surface:        #FFFFFF;
+  --color-sidebar:        #1A2332;
+  --color-sidebar-hover:  rgba(255,255,255,0.07);
+  --color-sidebar-active: #0D7A6F;
 
-  --text-dark: #1F2933;
-  --text-medium: #4B5563;
-  --text-light: #9CA3AF;
+  /* ── Text ─────────────────────────────────────── */
+  --color-text-primary:   #1A2332;
+  --color-text-secondary: #4B5C72;
+  --color-text-muted:     #8A9BAE;
 
-  --border-color: #E2E8F0;
-  --error-red: #E57373;
+  /* ── Borders ──────────────────────────────────── */
+  --color-border:         #E1E7EF;
+  --color-border-focus:   #0D7A6F;
 
-  --shadow-light: rgba(107, 207, 155, 0.08);
-  --shadow-medium: rgba(107, 207, 155, 0.2);
+  /* ── Semantic ─────────────────────────────────── */
+  --color-success:        #2E8A4F;
+  --color-success-light:  #EAF7EE;
+  --color-warning:        #D97706;
+  --color-warning-light:  #FEF3C7;
+  --color-danger:         #C0392B;
+  --color-danger-light:   #FDECEB;
+  --color-info:           #1D5FA6;
+  --color-info-light:     #E8F1FB;
+
+  /* ── Section stripe colours ───────────────────── */
+  --stripe-patient:       #1D5FA6;
+  --stripe-scanner:       #0D7A6F;
+  --stripe-measurements:  #7C3AED;
+  --stripe-result:        #D97706;
+
+  /* ── Shadows ──────────────────────────────────── */
+  --shadow-card:   0 1px 3px rgba(26,35,50,0.07), 0 0 0 1px var(--color-border);
+  --shadow-raised: 0 4px 16px rgba(26,35,50,0.10), 0 0 0 1px var(--color-border);
+  --shadow-focus:  0 0 0 3px rgba(13,122,111,0.18);
+
+  /* ── Radius ───────────────────────────────────── */
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  16px;
+
+  /* ── Typography ───────────────────────────────── */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* ── Legacy aliases (used in untouched components) */
+  --primary-green:       var(--color-primary);
+  --primary-green-dark:  var(--color-primary-dark);
+  --primary-green-light: var(--color-primary-light);
+  --background-white:    var(--color-surface);
+  --accent-gray:         var(--color-bg);
+  --text-dark:           var(--color-text-primary);
+  --text-medium:         var(--color-text-secondary);
+  --text-light:          var(--color-text-muted);
+  --border-color:        var(--color-border);
+  --error-red:           var(--color-danger);
+  --shadow-light:        rgba(26,35,50,0.06);
+  --shadow-medium:       rgba(26,35,50,0.12);
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* ── Reset ───────────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* ── Body ────────────────────────────────────────── */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Inter', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--background-white);
-  color: var(--text-dark);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
   min-height: 100vh;
 }
 
-#root {
+#root { width: 100%; min-height: 100vh; }
+
+/* ── App shell layout ─────────────────────────────── */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--color-bg);
+  overflow-x: hidden;
+}
+
+.page-content {
+  flex: 1;
+  padding: 32px;
+  max-width: 960px;
   width: 100%;
-  min-height: 100vh;
 }
 
+@media (max-width: 900px) {
+  .app-shell { flex-direction: column; }
+  .page-content { padding: 20px 16px; }
+}

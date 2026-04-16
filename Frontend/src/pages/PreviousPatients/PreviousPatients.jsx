@@ -68,11 +68,11 @@ function PreviousPatients({ auth, onLogout }) {
   }
 
   return (
-    <div className="patients-page">
-      <Header auth={auth} onLogout={onLogout} />
-      <div className="layout-shell">
-        <Sidebar auth={auth} />
-        <main className="layout-main">
+    <div className="app-shell">
+      <Sidebar auth={auth} />
+      <div className="app-main">
+        <Header auth={auth} onLogout={onLogout} title="Previous Patients" />
+        <main className="page-content">
           <div className="patients-container">
             <section className="patients-header">
               <div>
@@ -156,3 +156,4 @@ function PreviousPatients({ auth, onLogout }) {
 }
 
 export default PreviousPatients
+
