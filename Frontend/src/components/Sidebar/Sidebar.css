@@ -78,7 +78,7 @@
   color: #fff;
 }
 
-.sidebar-link-icon { font-size: 1rem; flex-shrink: 0; }
+.sidebar-link-icon { flex-shrink: 0; display: flex; }
 
 .sidebar-link-active {
   background: var(--color-sidebar-active) !important;

@@ -154,6 +154,13 @@ def extract_eye_measurements(image_bytes, eye='OD'):
         if img is None:
             return {**result, 'eye_extraction_status': status}
 
+        # Deskew before OCR — phone photos are often slightly angled
+        from .preprocessing import _deskew
+        try:
+            img = _deskew(img)
+        except Exception:
+            pass  # non-fatal; proceed with original
+
         gray = _preprocess_pachymetry_for_ocr(img)
         preproc_tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
         preproc_path = preproc_tmp.name
@@ -226,12 +233,12 @@ def extract_eye_measurements(image_bytes, eye='OD'):
                 for bbox, text, conf in chunks:
                     cy = _centroid_y(bbox)
                     cx = _centroid_x(bbox)
-                    if abs(cy - eye_row_y) > 25:
+                    if abs(cy - eye_row_y) > 35:
                         continue
                     if abs(cx - target_x) < best_dist:
                         best_dist = abs(cx - target_x)
                         best = text
-                return best if best_dist <= 60 else None
+                return best if best_dist <= 80 else None
 
             sph_text  = get_value_at_col('sph')
             cyl_text  = get_value_at_col('cyl')

@@ -100,6 +100,21 @@ async function initAdminUser() {
 const logmarToDecimal = (v) =>
   v != null ? Math.round(Math.pow(10, -Number(v)) * 100) / 100 : null
 
+// Snellen string → logMAR  (server-side mirror of frontend util)
+function snellenToLogmar(snellen) {
+  if (!snellen) return null
+  const s = String(snellen).trim().toUpperCase().replace(/\s/g, '')
+  const m6  = s.match(/^6\/(\d+)/)
+  if (m6)  return Math.round(Math.log10(Number(m6[1])  / 6)  * 1000) / 1000
+  const m20 = s.match(/^20\/(\d+)/)
+  if (m20) return Math.round(Math.log10(Number(m20[1]) / 20) * 1000) / 1000
+  if (s === 'CF')  return 1.8
+  if (s === 'HM')  return 2.3
+  if (s === 'PL')  return 2.9
+  if (s === 'NPL') return 3.0
+  return null
+}
+
 // K2 = K1 + |astigmatism|
 const calcK2 = (k1, astig) =>
   k1 != null && astig != null
@@ -172,14 +187,15 @@ app.post('/api/users', authMiddleware, adminOnly, async (req, res) => {
 app.post(
   '/api/analyze-quality',
   upload.fields([
-    { name: 'topography', maxCount: 1 },
-    { name: 'pachymetry', maxCount: 1 },
+    { name: 'topography',       maxCount: 1 },
+    { name: 'pachymetry',       maxCount: 1 },
+    { name: 'eye_measurements', maxCount: 1 },
   ]),
   async (req, res) => {
     try {
       const files = req.files
       const qualityForm = new FormData()
-      for (const key of ['topography', 'pachymetry']) {
+      for (const key of ['topography', 'pachymetry', 'eye_measurements']) {
         if (files?.[key]?.[0]) {
           qualityForm.append(key, files[key][0].buffer, {
             filename   : files[key][0].originalname,
@@ -228,24 +244,24 @@ app.post(
       const normalizedPatientId = String(patientId || '').trim()
       const normalizedEye = String(eye || '').trim().toUpperCase()
 
-      // Validate required fields
-      if (!normalizedPatientId || !normalizedEye || monthsAfterDALK === undefined ||
-          ucva_logmar === undefined || bcva_logmar === undefined ||
-          sphere_diopters === undefined || cylinder_diopters === undefined ||
-          axis_degrees === undefined) {
+      // Validate required fields (VA + refraction optional when eye_measurements image supplied)
+      const hasEyeMeasurementsFile = !!files?.eye_measurements?.[0]
+      if (!normalizedPatientId || !normalizedEye || monthsAfterDALK === undefined) {
         return res.status(400).json({ message: 'Missing required fields.' })
       }
+      if (!hasEyeMeasurementsFile) {
+        if (!ucva_logmar || ucva_logmar === 'null' ||
+            !bcva_logmar || bcva_logmar === 'null' ||
+            sphere_diopters === undefined || cylinder_diopters === undefined || axis_degrees === undefined) {
+          return res.status(400).json({ message: 'Missing required fields.' })
+        }
+      }
 
-      // ── Step 1: Convert logMAR → decimal ───────────────────────
-      const ucva_decimal = logmarToDecimal(ucva_logmar)
-      const bcva_decimal = logmarToDecimal(bcva_logmar)
-      console.log(`VA: UCVA ${ucva_logmar} → ${ucva_decimal} | BCVA ${bcva_logmar} → ${bcva_decimal}`)
-
-      // ── Step 2: OCR both images via Flask ───────────────────────
+      // ── Step 1: OCR all images via Flask ────────────────────────
       let extractedValues     = {}
       let ocrExtractionStatus = {}
 
-      if (!isManualMode && (files?.topography?.[0] || files?.pachymetry?.[0])) {
+      if (!isManualMode && (files?.topography?.[0] || files?.pachymetry?.[0] || files?.eye_measurements?.[0])) {
         try {
           const ocrForm = new FormData()
           ocrForm.append('eye', normalizedEye || 'OD')
@@ -292,6 +308,29 @@ app.post(
         }
       }
 
+      // ── Step 2: Extract eye-measurement OCR values ──────────────
+      const ocrUcva     = extractedValues.ucva_snellen      || null
+      const ocrBcva     = extractedValues.bcva_snellen      || null
+      const ocrSphere   = extractedValues.sphere_diopters   != null ? Number(extractedValues.sphere_diopters)   : null
+      const ocrCylinder = extractedValues.cylinder_diopters != null ? Number(extractedValues.cylinder_diopters) : null
+      const ocrAxis     = extractedValues.axis_degrees      != null ? Number(extractedValues.axis_degrees)      : null
+
+      // Effective VA: prefer form logMAR (manual entry), fall back to OCR Snellen → logMAR
+      const formUcvaLogmar = (ucva_logmar && ucva_logmar !== 'null') ? Number(ucva_logmar) : null
+      const formBcvaLogmar = (bcva_logmar && bcva_logmar !== 'null') ? Number(bcva_logmar) : null
+      const effectiveUcvaLogmar = formUcvaLogmar ?? snellenToLogmar(ocrUcva)
+      const effectiveBcvaLogmar = formBcvaLogmar ?? snellenToLogmar(ocrBcva)
+
+      // Effective refraction: prefer OCR, fall back to form values
+      const effectiveSphere   = ocrSphere   ?? (sphere_diopters   !== undefined ? Number(sphere_diopters)   : 0)
+      const effectiveCylinder = ocrCylinder ?? (cylinder_diopters !== undefined ? Number(cylinder_diopters) : 0)
+      const effectiveAxis     = ocrAxis     ?? (axis_degrees      !== undefined ? Number(axis_degrees)      : 0)
+
+      // Convert effective logMAR → decimal for ML model
+      const ucva_decimal = logmarToDecimal(effectiveUcvaLogmar)
+      const bcva_decimal = logmarToDecimal(effectiveBcvaLogmar)
+      console.log(`VA: UCVA ${effectiveUcvaLogmar} → ${ucva_decimal} | BCVA ${effectiveBcvaLogmar} → ${bcva_decimal}`)
+
       // ── Step 3: Get extracted values (overrides take precedence) ─
       const k1Raw    = extractedValues.K1_diopters
       const astigRaw = extractedValues.astigmatism_diopters
@@ -309,9 +348,14 @@ app.post(
         : astigOcrValid
 
       const k2FromOcr = k2Raw != null ? Number(k2Raw) : null
-      const k2 = (k2Override != null && Number.isFinite(k2Override))
-        ? k2Override
-        : (k2FromOcr != null && Number.isFinite(k2FromOcr) ? k2FromOcr : calcK2(k1, astig))
+      let k2Derived = false
+      const k2 = (() => {
+        if (k2Override != null && Number.isFinite(k2Override)) return k2Override
+        if (k2FromOcr  != null && Number.isFinite(k2FromOcr))  return k2FromOcr
+        const calc = calcK2(k1, astig)
+        if (calc != null) k2Derived = true
+        return calc
+      })()
 
       const overrideCct = corneal_thickness_override != null && corneal_thickness_override !== ''
         ? Number(corneal_thickness_override)
@@ -349,10 +393,11 @@ app.post(
           K2_diopters          : k2,
           astigmatism_diopters : astig,
           corneal_thickness_um : cct,
-          sphere_diopters      : Number(sphere_diopters),
-          cylinder_diopters    : Number(cylinder_diopters),
-          axis_degrees         : Number(axis_degrees),
+          sphere_diopters      : effectiveSphere,
+          cylinder_diopters    : effectiveCylinder,
+          axis_degrees         : effectiveAxis,
           visual_acuity_decimal: bcva_decimal,
+          monthsAfterDALK      : Number(monthsAfterDALK),
         }),
         signal : mlAbort.signal,
       }).finally(() => clearTimeout(mlTimer))
@@ -364,20 +409,30 @@ app.post(
 
       const ml = await mlRes.json()
 
+      // ── Step 4b: Fetch most recent prior record for comparison ──
+      const priorRecord = await predictionsCollection.findOne(
+        { patientId: normalizedPatientId, eye: normalizedEye },
+        { sort: { createdAt: -1 }, projection: { recommendedCorrection: 1, confidence: 1, createdAt: 1 } }
+      )
+
       // ── Step 5: Save to MongoDB ─────────────────────────────────
       const insertResult = await predictionsCollection.insertOne({
         patientId            : normalizedPatientId,
         eye                  : normalizedEye,
         monthsAfterDALK      : Number(monthsAfterDALK),
-        ucva                 : Number(ucva_logmar),
-        bcva                 : Number(bcva_logmar),
-        sphere               : Number(sphere_diopters),
-        cylinder             : Number(cylinder_diopters),
-        axis                 : Number(axis_degrees),
+        ucva                 : effectiveUcvaLogmar,
+        bcva                 : effectiveBcvaLogmar,
+        ucva_snellen         : ocrUcva,
+        bcva_snellen         : ocrBcva,
+        sphere               : effectiveSphere,
+        cylinder             : effectiveCylinder,
+        axis                 : effectiveAxis,
         K1_diopters          : k1,
         K2_diopters          : k2,
         astigmatism_diopters : astig,
         corneal_thickness_um : cct,
+        estimatedFeatures    : ml.used_features || {},
+        k2Derived            : k2Derived,
         recommendedCorrection: ml.prediction,
         confidence           : ml.confidence,
         probabilities        : ml.probabilities,
@@ -397,13 +452,6 @@ app.post(
         ? `${cct} µm${cctFromOcrValid == null && overrideCct != null ? ' (manual fallback)' : ''}`
         : (uf.corneal_thickness_um != null ? `${uf.corneal_thickness_um} µm` : null)
 
-      // Eye measurements OCR fields (from third scanner)
-      const ocrUcva     = extractedValues.ucva_snellen      || null
-      const ocrBcva     = extractedValues.bcva_snellen      || null
-      const ocrSphere   = extractedValues.sphere_diopters   != null ? Number(extractedValues.sphere_diopters)   : null
-      const ocrCylinder = extractedValues.cylinder_diopters != null ? Number(extractedValues.cylinder_diopters) : null
-      const ocrAxis     = extractedValues.axis_degrees      != null ? Number(extractedValues.axis_degrees)      : null
-
       // Add eye-measurement extraction statuses
       for (const f of ['ucva_snellen', 'bcva_snellen', 'sphere_diopters', 'cylinder_diopters', 'axis_degrees']) {
         if (!(f in extractionStatus)) extractionStatus[f] = 'not_found'
@@ -416,11 +464,11 @@ app.post(
 
       // Build display values including eye-measurement OCR fields
       const ucvaDisplay = ocrUcva
-        ? `${ocrUcva} (OCR) → logMAR ${ucva_logmar} → decimal ${ucva_decimal}`
-        : `${ucva_logmar} logMAR → ${ucva_decimal} decimal`
+        ? `${ocrUcva} (OCR) → logMAR ${effectiveUcvaLogmar} → decimal ${ucva_decimal}`
+        : (effectiveUcvaLogmar != null ? `${effectiveUcvaLogmar} logMAR → ${ucva_decimal} decimal` : null)
       const bcvaDisplay = ocrBcva
-        ? `${ocrBcva} (OCR) → logMAR ${bcva_logmar} → decimal ${bcva_decimal}`
-        : `${bcva_logmar} logMAR → ${bcva_decimal} decimal`
+        ? `${ocrBcva} (OCR) → logMAR ${effectiveBcvaLogmar} → decimal ${bcva_decimal}`
+        : (effectiveBcvaLogmar != null ? `${effectiveBcvaLogmar} logMAR → ${bcva_decimal} decimal` : null)
 
       return res.json({
         recommended  : ml.prediction,
@@ -446,7 +494,13 @@ app.post(
         timestamp      : new Date().toISOString(),
         extractionStatus,
         hasEstimatedValues,
+        k2Derived,
         submissionMode: isManualMode ? 'manual' : 'ocr',
+        priorAssessment: priorRecord ? {
+          recommendedCorrection: priorRecord.recommendedCorrection,
+          confidence           : priorRecord.confidence,
+          createdAt            : priorRecord.createdAt,
+        } : null,
       })
 
     } catch (error) {
@@ -456,9 +510,79 @@ app.post(
   }
 )
 
+// ── Clinician notes ───────────────────────────────────────────────
+app.patch('/api/predictions/:id/notes', authMiddleware, async (req, res) => {
+  try {
+    if (!ensureDbReady(res)) return
+    const { id }    = req.params
+    const { notes } = req.body
+    if (typeof notes !== 'string') return res.status(400).json({ message: 'notes must be a string' })
+    const { ObjectId } = await import('mongodb')
+    let oid
+    try { oid = new ObjectId(id) } catch { return res.status(400).json({ message: 'Invalid id' }) }
+    const result = await predictionsCollection.updateOne(
+      { _id: oid },
+      { $set: { clinicianNotes: notes.trim(), notesUpdatedAt: new Date().toISOString() } }
+    )
+    if (result.matchedCount === 0) return res.status(404).json({ message: 'Record not found' })
+    return res.json({ ok: true })
+  } catch (error) {
+    console.error('Error saving notes', error)
+    return res.status(500).json({ message: 'Internal server error.' })
+  }
+})
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DASHBOARD ROUTES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.get('/api/dashboard/due-reassessment', authMiddleware, async (req, res) => {
+  try {
+    if (!ensureDbReady(res)) return
+
+    // Re-assessment schedule (clinical rules):
+    //   monthsAfterDALK < 12  → re-assess every 3 months (90 days)
+    //   monthsAfterDALK >= 12 → re-assess every 6 months (180 days)
+    const now = new Date()
+
+    // Get the most recent assessment per patient+eye combination
+    const latest = await predictionsCollection.aggregate([
+      { $sort: { createdAt: -1 } },
+      { $group: {
+        _id: { patientId: '$patientId', eye: '$eye' },
+        lastAssessment  : { $first: '$createdAt' },
+        monthsAfterDALK : { $first: '$monthsAfterDALK' },
+        recommendation  : { $first: '$recommendedCorrection' },
+      }},
+    ]).toArray()
+
+    const due = latest
+      .map(p => {
+        const last     = new Date(p.lastAssessment)
+        const daysSince = Math.floor((now - last) / (1000 * 60 * 60 * 24))
+        const interval  = (p.monthsAfterDALK != null && p.monthsAfterDALK < 12) ? 90 : 180
+        const daysOverdue = daysSince - interval
+        return {
+          patientId       : p._id.patientId,
+          eye             : p._id.eye,
+          lastAssessment  : p.lastAssessment,
+          monthsAfterDALK : p.monthsAfterDALK,
+          recommendation  : p.recommendation,
+          daysSince,
+          intervalDays    : interval,
+          daysOverdue,
+          isDue           : daysOverdue >= 0,
+        }
+      })
+      .filter(p => p.isDue)
+      .sort((a, b) => b.daysOverdue - a.daysOverdue)
+
+    return res.json({ due })
+  } catch (error) {
+    console.error('Error fetching due re-assessments', error)
+    return res.status(500).json({ message: 'Internal server error.' })
+  }
+})
 
 app.get('/api/dashboard/stats', authMiddleware, async (req, res) => {
   try {
@@ -556,10 +680,17 @@ app.get('/api/patients/:patientId/history', authMiddleware, async (req, res) => 
       K2_diopters          : p.K2_diopters,
       astigmatism_diopters : p.astigmatism_diopters,
       corneal_thickness_um : p.corneal_thickness_um,
+      estimatedFeatures    : p.estimatedFeatures || {},
       sphere               : p.sphere,
       cylinder             : p.cylinder,
       axis                 : p.axis,
+      ucva_snellen         : p.ucva_snellen  || null,
+      bcva_snellen         : p.bcva_snellen  || null,
+      ucva_logmar          : p.ucva          ?? null,
+      bcva_logmar          : p.bcva          ?? null,
       probabilities        : p.probabilities,
+      clinicianNotes       : p.clinicianNotes  || '',
+      notesUpdatedAt       : p.notesUpdatedAt  || null,
       createdAt            : p.createdAt,
     }))
     return res.json({ history })

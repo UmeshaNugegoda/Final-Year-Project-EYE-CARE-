@@ -14,6 +14,17 @@ function formatDate(iso) {
   }
 }
 
+function formatMeasurement(extracted, estimated, unit) {
+  if (extracted != null) return `${extracted} ${unit}`
+  if (estimated != null) return (
+    <span className="history-estimated-val">
+      {Number(estimated).toFixed(2)} {unit}
+      <span className="history-estimated-badge">Est.</span>
+    </span>
+  )
+  return '—'
+}
+
 function PatientHistory({ auth, onLogout }) {
   const [searchParams] = useSearchParams()
   const patientId = searchParams.get('patientId') || ''
@@ -213,24 +224,34 @@ function PatientHistory({ auth, onLogout }) {
                     {expandedIndex === i && (
                       <div className="history-details-card">
                         <div className="history-details-grid">
-                          <div><strong>K1</strong></div>
-                          <div>{item.K1_diopters != null ? `${item.K1_diopters} D` : '—'}</div>
-                          <div><strong>K2</strong></div>
-                          <div>{item.K2_diopters != null ? `${item.K2_diopters} D` : '—'}</div>
-                          <div><strong>Corneal Astigmatism (Cyl)</strong></div>
-                          <div>{item.astigmatism_diopters != null ? `${item.astigmatism_diopters} D` : '—'}</div>
-                          <div><strong>Central Corneal Thickness (CCT)</strong></div>
-                          <div>{item.corneal_thickness_um != null ? `${item.corneal_thickness_um} um` : '—'}</div>
+                          <div><strong>UCVA</strong></div>
+                          <div>{item.ucva_snellen || (item.ucva_logmar != null ? `${item.ucva_logmar} logMAR` : '—')}</div>
+                          <div><strong>BCVA</strong></div>
+                          <div>{item.bcva_snellen || (item.bcva_logmar != null ? `${item.bcva_logmar} logMAR` : '—')}</div>
                           <div><strong>Sphere</strong></div>
                           <div>{item.sphere != null ? `${item.sphere} D` : '—'}</div>
                           <div><strong>Cylinder</strong></div>
                           <div>{item.cylinder != null ? `${item.cylinder} D` : '—'}</div>
                           <div><strong>Axis</strong></div>
-                          <div>{item.axis != null ? `${item.axis} deg` : '—'}</div>
+                          <div>{item.axis != null ? `${item.axis}°` : '—'}</div>
+                          <div><strong>K1 (Flat)</strong></div>
+                          <div>{formatMeasurement(item.K1_diopters, item.estimatedFeatures?.K1_diopters, 'D')}</div>
+                          <div><strong>K2 (Steep)</strong></div>
+                          <div>{formatMeasurement(item.K2_diopters, item.estimatedFeatures?.K2_diopters, 'D')}</div>
+                          <div><strong>Corneal Cyl</strong></div>
+                          <div>{formatMeasurement(item.astigmatism_diopters, item.estimatedFeatures?.astigmatism_diopters, 'D')}</div>
+                          <div><strong>CCT</strong></div>
+                          <div>{formatMeasurement(item.corneal_thickness_um, item.estimatedFeatures?.corneal_thickness_um, 'µm')}</div>
                         </div>
                         {item.probabilities && (
                           <div className="history-prob-note">
                             Probabilities are saved for this report.
+                          </div>
+                        )}
+                        {item.clinicianNotes && (
+                          <div className="history-clinician-notes">
+                            <span className="history-notes-label">Clinician Notes</span>
+                            <p className="history-notes-text">{item.clinicianNotes}</p>
                           </div>
                         )}
                       </div>

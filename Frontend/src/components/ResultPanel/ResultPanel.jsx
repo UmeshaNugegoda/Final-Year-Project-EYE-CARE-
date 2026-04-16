@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { ScanLine, AlertTriangle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import './ResultPanel.css'
 
 const KEY_TO_STATUS_FIELD = {
@@ -9,9 +10,10 @@ const KEY_TO_STATUS_FIELD = {
 }
 
 const CLASS_COLORS = {
-  'Spectacles'    : { badge: '#2E8A4F', bg: '#EAF7EE' },
-  'Contact Lenses': { badge: '#0D7A6F', bg: '#E0F5F3' },
-  'No Correction' : { badge: '#1D5FA6', bg: '#E8F1FB' },
+  'Spectacles'          : { badge: '#2E8A4F', bg: '#EAF7EE' },
+  'Contact Lenses'      : { badge: '#0D7A6F', bg: '#E0F5F3' },
+  'No Correction'       : { badge: '#1D5FA6', bg: '#E8F1FB' },
+  'Refer to Specialist' : { badge: '#D97706', bg: '#FEF3C7' },
 }
 const DEFAULT_COLOR = { badge: '#4B5C72', bg: '#F5F7FA' }
 
@@ -28,9 +30,12 @@ function Accordion({ title, defaultOpen = true, children }) {
   )
 }
 
-function ResultPanel({ result }) {
-  const [ocrPopover, setOcrPopover] = useState(false)
-  const [estPopover, setEstPopover] = useState(false)
+function ResultPanel({ result, auth }) {
+  const [ocrPopover,  setOcrPopover]  = useState(false)
+  const [estPopover,  setEstPopover]  = useState(false)
+  const [notes,       setNotes]       = useState('')
+  const [notesSaving, setNotesSaving] = useState(false)
+  const [notesSaved,  setNotesSaved]  = useState(false)
 
   if (!result) return null
 
@@ -116,8 +121,21 @@ function ResultPanel({ result }) {
     win.document.close()
   }
 
+  const isReferral = result.recommended === 'Refer to Specialist'
+
   return (
     <section className="result-panel">
+
+      {/* ── Referral banner ── */}
+      {isReferral && (
+        <div className="referral-banner">
+          <AlertTriangle size={16} />
+          <div>
+            <strong>Confidence below clinical threshold ({confidence?.toFixed(1)}%)</strong>
+            <p>The model cannot make a reliable recommendation with the available data. Please refer this patient to a specialist for manual assessment.</p>
+          </div>
+        </div>
+      )}
 
       {/* ── Main recommendation + confidence ── */}
       <div className="result-main">
@@ -154,7 +172,7 @@ function ResultPanel({ result }) {
               className="info-chip"
               onClick={() => setOcrPopover(v => !v)}
             >
-              🔍 OCR extracted
+              <ScanLine size={13} /> OCR extracted
             </button>
             {ocrPopover && (
               <div className="chip-popover">
@@ -171,7 +189,7 @@ function ResultPanel({ result }) {
               className="warn-chip"
               onClick={() => setEstPopover(v => !v)}
             >
-              ⚠ {estimatedCount} estimated value{estimatedCount > 1 ? 's' : ''}
+              <AlertTriangle size={13} /> {estimatedCount} estimated value{estimatedCount > 1 ? 's' : ''}
             </button>
             {estPopover && (
               <div className="chip-popover">
@@ -212,9 +230,17 @@ function ResultPanel({ result }) {
               {Object.entries(result.extractedValues).map(([key, val]) => {
                 const fk     = KEY_TO_STATUS_FIELD[key]
                 const status = fk ? (result.extractionStatus?.[fk] || 'not_found') : null
+                const isK2   = key === 'K2_diopters'
                 return (
                   <div key={key} className="extracted-item">
-                    <span className="extracted-key">{formatKey(key)}</span>
+                    <span className="extracted-key">
+                      {formatKey(key)}
+                      {isK2 && result.k2Derived && (
+                        <span className="k2-derived-note" title="K2 was calculated as K1 + |Cyl| — not directly extracted">
+                          calc
+                        </span>
+                      )}
+                    </span>
                     <span className="extracted-val">{val ?? '—'}</span>
                     {status === 'extracted'       && <span className="badge-extracted">Extracted</span>}
                     {status === 'manual_override' && <span className="badge-override">Manual</span>}
@@ -233,6 +259,76 @@ function ResultPanel({ result }) {
         )}
 
       </div>
+
+      {/* ── Prior assessment comparison ── */}
+      {result.priorAssessment && (
+        <div className="prior-assessment">
+          <span className="prior-label">vs. last visit ({result.priorAssessment.createdAt?.slice(0,10)})</span>
+          <div className="prior-row">
+            <span className="prior-field">Recommendation</span>
+            <span className="prior-value">
+              {result.priorAssessment.recommendedCorrection}
+              {result.priorAssessment.recommendedCorrection === result.recommended
+                ? <span className="prior-unchanged">unchanged</span>
+                : <span className="prior-changed">→ {result.recommended}</span>}
+            </span>
+          </div>
+          <div className="prior-row">
+            <span className="prior-field">Confidence</span>
+            <span className="prior-value">
+              {result.priorAssessment.confidence?.toFixed(1)}%
+              {result.confidence != null && result.priorAssessment.confidence != null && (() => {
+                const delta = result.confidence - result.priorAssessment.confidence
+                if (Math.abs(delta) < 0.5) return <span className="prior-delta neutral"><Minus size={12}/></span>
+                return delta > 0
+                  ? <span className="prior-delta up"><TrendingUp size={12}/> +{delta.toFixed(1)}%</span>
+                  : <span className="prior-delta down"><TrendingDown size={12}/> {delta.toFixed(1)}%</span>
+              })()}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Clinician notes ── */}
+      {result.recordId && (
+        <div className="clinician-notes">
+          <label className="notes-label" htmlFor="clinician-notes-input">Clinician Notes</label>
+          <textarea
+            id="clinician-notes-input"
+            className="notes-textarea"
+            placeholder="Add clinical notes, observations, or patient preferences…"
+            value={notes}
+            onChange={e => { setNotes(e.target.value); setNotesSaved(false) }}
+            rows={3}
+          />
+          <div className="notes-actions">
+            <button
+              type="button"
+              className="notes-save-btn"
+              disabled={notesSaving || !notes.trim()}
+              onClick={async () => {
+                setNotesSaving(true)
+                try {
+                  await fetch(`/api/predictions/${result.recordId}/notes`, {
+                    method: 'PATCH',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+                    },
+                    body: JSON.stringify({ notes }),
+                  })
+                  setNotesSaved(true)
+                } catch { /* non-fatal */ }
+                finally { setNotesSaving(false) }
+              }}
+            >
+              {notesSaving ? 'Saving…' : 'Save Notes'}
+            </button>
+            {notesSaved && <span className="notes-saved-indicator">✓ Saved</span>}
+          </div>
+        </div>
+      )}
+
     </section>
   )
 }

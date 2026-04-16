@@ -1,3 +1,21 @@
+/* ── OCR quality fallback warning ── */
+.ocr-fallback-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 14px;
+  background: var(--color-warning-light);
+  border: 1px solid #fbbf24;
+  border-radius: var(--radius-sm);
+  margin-bottom: 20px;
+  font-size: 0.82rem;
+  color: #78350f;
+  line-height: 1.55;
+  font-weight: 500;
+}
+
+.ocr-fallback-warning svg { flex-shrink: 0; margin-top: 1px; color: var(--color-warning); }
+
 .input-group { margin-bottom: 24px; }
 .input-group:last-child { margin-bottom: 0; }
 

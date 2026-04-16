@@ -51,3 +51,6 @@ venv/
 
 # Documentation
 docs/
+
+# Local startup guide (personal reference, not for repo)
+STARTUP.md

@@ -88,6 +88,10 @@ def extract():
                     extracted[field] = em_result[field]
             extraction_status.update(em_status)
 
+        success = sum(1 for v in extraction_status.values() if v == 'extracted')
+        total   = len(extraction_status)
+        print(f"[OCR] {success}/{total} fields extracted | eye={eye} | {extraction_status}")
+
         return jsonify({"extracted": extracted, "eye": eye, "extraction_status": extraction_status})
     except Exception as e:
         return jsonify({"error": str(e), "extracted": {}}), 500
@@ -106,7 +110,7 @@ def analyze_quality():
     result = {"warnings": {"topography": [], "pachymetry": [], "eye_measurements": []}}
     temps = []
     try:
-        for img_key in ["topography", "pachymetry"]:
+        for img_key in ["topography", "pachymetry", "eye_measurements"]:
             if img_key in request.files:
                 f = request.files[img_key]
                 tmp = tempfile.NamedTemporaryFile(
@@ -141,9 +145,14 @@ def predict():
         row     = pd.DataFrame([{f: data.get(f, np.nan) for f in FEATURES}])
         row_imp = IMPUTER.transform(row)
         row_sc  = SCALER.transform(row_imp)
-        idx     = MODEL.predict(row_sc)[0]
-        probs   = MODEL.predict_proba(row_sc)[0]
-        label   = LE.inverse_transform([idx])[0]
+        idx        = MODEL.predict(row_sc)[0]
+        probs      = MODEL.predict_proba(row_sc)[0]
+        label      = LE.inverse_transform([idx])[0]
+        confidence = round(float(max(probs)) * 100, 1)
+
+        CONFIDENCE_THRESHOLD = 65.0
+        if confidence < CONFIDENCE_THRESHOLD:
+            label = "Refer to Specialist"
 
         # Build a dict of the actual values used (post-imputation) so the
         # frontend can display estimated values alongside extracted ones.
@@ -162,7 +171,7 @@ def predict():
 
         return jsonify({
             "prediction"   : label,
-            "confidence"   : round(float(max(probs)) * 100, 1),
+            "confidence"   : confidence,
             "probabilities": {c: round(float(p) * 100, 1) for c, p in zip(LE.classes_, probs)},
             "used_features": used_features,
         })

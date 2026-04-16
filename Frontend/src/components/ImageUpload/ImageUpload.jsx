@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import './ImageUpload.css'
 
 const WARNING_DETAIL = {
@@ -51,7 +52,7 @@ function WarningChips({ warnings }) {
             onClick={() => setOpenCode(openCode === w.code ? null : w.code)}
             aria-expanded={openCode === w.code}
           >
-            ⚠ {WARNING_LABELS[w.code] || w.code}
+            <AlertTriangle size={12} /> {WARNING_LABELS[w.code] || w.code}
           </button>
           {openCode === w.code && (
             <div className="warning-chip-popover">

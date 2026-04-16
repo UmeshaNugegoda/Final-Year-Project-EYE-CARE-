@@ -15,7 +15,6 @@ function Header({ auth, onLogout, title }) {
             <span className="header-role-badge">
               {auth.user.role === 'admin' ? 'Admin' : 'Clinician'}
             </span>
-            <span className="header-user">{auth.user.username}</span>
             <button type="button" className="header-logout" onClick={onLogout}>
               Log out
             </button>

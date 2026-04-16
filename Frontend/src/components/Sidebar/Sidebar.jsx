@@ -1,6 +1,14 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
+import { LayoutDashboard, Activity, Users, BookOpen, ShieldCheck } from 'lucide-react'
 import './Sidebar.css'
+
+const NAV_ITEMS = [
+  { to: '/dashboard',  label: 'Dashboard',         Icon: LayoutDashboard },
+  { to: '/prediction', label: 'Prediction',         Icon: Activity },
+  { to: '/patients',   label: 'Previous Patients',  Icon: Users },
+  { to: '/history',    label: 'Patient History',    Icon: BookOpen },
+]
 
 function Sidebar({ auth }) {
   const role     = auth?.user?.role
@@ -17,35 +25,22 @@ function Sidebar({ auth }) {
       </div>
 
       <nav className="sidebar-nav">
-        <NavLink to="/dashboard"
-          className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link-active' : ''}`}
-        >
-          <span className="sidebar-link-icon">🏠</span>
-          <span>Dashboard</span>
-        </NavLink>
-        <NavLink to="/prediction"
-          className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link-active' : ''}`}
-        >
-          <span className="sidebar-link-icon">📊</span>
-          <span>Prediction</span>
-        </NavLink>
-        <NavLink to="/patients"
-          className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link-active' : ''}`}
-        >
-          <span className="sidebar-link-icon">👥</span>
-          <span>Previous Patients</span>
-        </NavLink>
-        <NavLink to="/history"
-          className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link-active' : ''}`}
-        >
-          <span className="sidebar-link-icon">📚</span>
-          <span>Patient History</span>
-        </NavLink>
-        {role === 'admin' && (
-          <NavLink to="/admin"
+        {NAV_ITEMS.map(({ to, label, Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
             className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link-active' : ''}`}
           >
-            <span className="sidebar-link-icon">🛠️</span>
+            <Icon size={18} className="sidebar-link-icon" />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+        {role === 'admin' && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) => `sidebar-link${isActive ? ' sidebar-link-active' : ''}`}
+          >
+            <ShieldCheck size={18} className="sidebar-link-icon" />
             <span>Admin</span>
           </NavLink>
         )}

@@ -74,7 +74,10 @@ def _run_ocr_subprocess(src):
         if proc.returncode != 0:
             print(f"[OCR worker] exit {proc.returncode}: {proc.stderr[:400]}")
             return []
-        return json.loads(proc.stdout)
+        raw = json.loads(proc.stdout)
+        # Filter out low-confidence chunks — they introduce noise into extraction
+        MIN_CONF = 0.35
+        return [item for item in raw if float(item[2]) >= MIN_CONF]
     except subprocess.TimeoutExpired:
         print("[OCR worker] timed out after 300 s")
         return []
