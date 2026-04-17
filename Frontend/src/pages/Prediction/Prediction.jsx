@@ -172,10 +172,13 @@ function Prediction({ auth, onLogout }) {
 
   return (
     <div className="app-shell">
-      <Sidebar auth={auth} />
+      <Sidebar auth={auth} onLogout={onLogout} />
       <div className="app-main">
-        <Header auth={auth} onLogout={onLogout} title="Prediction" />
         <main className="page-content prediction-content">
+          <Header
+            title="New Assessment"
+            subtitle="Upload corneal images and run a post-DALK correction prediction"
+          />
 
           <PredictionStepper activeStep={activeStep} />
 

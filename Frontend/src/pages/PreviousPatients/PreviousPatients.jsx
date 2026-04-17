@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Search, History, Users, CheckCircle, TrendingUp } from 'lucide-react'
 import Header from '../../components/Header/Header'
 import Sidebar from '../../components/Sidebar/Sidebar'
 import './PreviousPatients.css'
@@ -69,36 +70,61 @@ function PreviousPatients({ auth, onLogout }) {
 
   return (
     <div className="app-shell">
-      <Sidebar auth={auth} />
+      <Sidebar auth={auth} onLogout={onLogout} />
       <div className="app-main">
-        <Header auth={auth} onLogout={onLogout} title="Previous Patients" />
         <main className="page-content">
-          <div className="patients-container">
-            <section className="patients-header">
-              <div>
-                <h2 className="patients-title">Previous Patients</h2>
-                <p className="patients-subtitle">
-                  Review existing post‑DALK patients and open their assessment history.
-                </p>
-              </div>
-              <div className="patients-filters">
-                <input
-                  type="text"
-                  className="patients-search"
-                  placeholder="Search by Patient ID"
-                  aria-label="Search patients"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </section>
 
+          <Header
+            title="Previous Patients"
+            subtitle="Review existing post-DALK patients and open their assessment history"
+            searchValue={search}
+            onSearch={(e) => setSearch(e.target.value)}
+            searchPlaceholder="Search by Patient ID…"
+          />
+
+          <div className="patients-container">
+            {/* ── Stats summary ── */}
+            {!loading && !error && (
+              <div className="patients-summary-row">
+                {/* Card 1 */}
+                <div className="patients-summary-card">
+                  <div className="patients-summary-top">
+                    <span className="patients-summary-label">Total Patients</span>
+                    <Users size={16} className="patients-summary-icon" />
+                  </div>
+                  <span className="patients-summary-value">{patients.length}</span>
+                  <div className="patients-summary-trend">
+                    <span className="trend-pill trend-up"><TrendingUp size={12} /> 12%</span>
+                    <span className="trend-text">All time</span>
+                  </div>
+                </div>
+                {/* Card 2 */}
+                <div className="patients-summary-card">
+                  <div className="patients-summary-top">
+                    <span className="patients-summary-label">Active Patients</span>
+                    <CheckCircle size={16} className="patients-summary-icon" />
+                  </div>
+                  <span className="patients-summary-value">{filtered.length}</span>
+                  <div className="patients-summary-trend">
+                    <span className="trend-pill trend-up"><TrendingUp size={12} /> 100%</span>
+                    <span className="trend-text">Active Ratio</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Table Top ── */}
+            <div className="table-topbar">
+              <h3 className="table-title">All Patients</h3>
+            </div>
+
+            {/* ── Table ── */}
             <section className="patients-table-card">
               <div className="patients-table-header">
                 <span>Patient</span>
                 <span>Eye</span>
                 <span>Months after DALK</span>
-                <span>Last assessment</span>
+                <span>Last Assessment</span>
                 <span>Correction</span>
                 <span>Action</span>
               </div>
@@ -126,14 +152,18 @@ function PreviousPatients({ auth, onLogout }) {
                         <div className="patients-avatar">{initials(p.patientId)}</div>
                         <div className="patients-text">
                           <div className="patients-name">Patient {p.patientId}</div>
-                          <div className="patients-id">{p.patientId}</div>
+                          <div className="patients-id">#{p.patientId}</div>
                         </div>
                       </div>
                       <div className="patients-cell">{p.eye}</div>
                       <div className="patients-cell">{p.monthsAfterDALK ?? '—'}</div>
                       <div className="patients-cell">{formatDate(p.lastAssessment)}</div>
                       <div className="patients-cell patients-chip">
-                        <span>{p.recommendation || '—'}</span>
+                        <span className={
+                          p.recommendation === 'Spectacles'    ? 'chip-blue' :
+                          p.recommendation === 'Contact Lenses'? 'chip-purple' :
+                          p.recommendation ? 'chip-teal' : 'chip-muted'
+                        }>{p.recommendation || '—'}</span>
                       </div>
                       <div className="patients-cell">
                         <button
@@ -141,12 +171,19 @@ function PreviousPatients({ auth, onLogout }) {
                           className="patients-view-button"
                           onClick={() => handleViewHistory(p.patientId, p.eye)}
                         >
+                          <History size={13} />
                           View History
                         </button>
                       </div>
                     </div>
                   ))}
               </div>
+
+              {!loading && filtered.length > 0 && (
+                <div className="patients-table-footer">
+                  Showing {filtered.length} of {patients.length} patient{patients.length !== 1 ? 's' : ''}
+                </div>
+              )}
             </section>
           </div>
         </main>
@@ -156,4 +193,3 @@ function PreviousPatients({ auth, onLogout }) {
 }
 
 export default PreviousPatients
-

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Eye, Glasses, Focus, CheckCircle2,
   ClipboardPlus, Users, FileText, Clock,
+  TrendingUp,
 } from 'lucide-react'
 import Header from '../../components/Header/Header'
 import Sidebar from '../../components/Sidebar/Sidebar'
@@ -73,36 +74,48 @@ function Dashboard({ auth, onLogout }) {
     { title: 'No Correction',   value: stats.noCorrection,     Icon: CheckCircle2, colorClass: 'ic-green'  },
   ] : []
 
-  const activityDot = (rec) =>
-    rec === 'Spectacles' ? 'dot-blue' : rec === 'Contact Lenses' ? 'dot-purple' : 'dot-teal'
+  const recChip = (rec) => {
+    if (rec === 'Spectacles')    return 'chip-blue'
+    if (rec === 'Contact Lenses') return 'chip-purple'
+    return 'chip-teal'
+  }
 
   return (
     <div className="app-shell">
-      <Sidebar auth={auth} />
+      <Sidebar auth={auth} onLogout={onLogout} />
       <div className="app-main">
-        <Header auth={auth} onLogout={onLogout} title="Dashboard" />
         <main className="page-content">
+
+          <Header
+            title="Dashboard"
+            subtitle="Overview of your post-DALK clinical assessments"
+            action={{ label: '+ New Assessment', onClick: () => navigate('/prediction') }}
+          />
+
           <div className="dashboard-container">
 
-            {/* ── Stats ── */}
-            <section className="dashboard-section">
-              <h2 className="dashboard-section-title">Overview</h2>
-              {loading && <p className="dashboard-loading">Loading…</p>}
-              {error   && <p className="dashboard-error">{error}</p>}
-              {!loading && !error && (
-                <div className="stats-grid">
-                  {overviewCards.map(({ title, value, Icon, colorClass }) => (
-                    <div key={title} className="stat-card">
-                      <div className={`stat-icon-box ${colorClass}`}>
-                        <Icon size={22} />
-                      </div>
-                      <div className="stat-value">{value?.toLocaleString() ?? '—'}</div>
-                      <div className="stat-label">{title}</div>
+            {/* ── Stats row ── */}
+            {loading && <p className="dashboard-loading">Loading…</p>}
+            {error   && <p className="dashboard-error">{error}</p>}
+            {!loading && !error && (
+              <div className="stats-grid">
+                {overviewCards.map(({ title, value, Icon, colorClass }) => (
+                  <div key={title} className="stat-card">
+                    <div className="stat-card-left">
+                      <span className="stat-label">{title}</span>
+                      <span className="stat-value">{value?.toLocaleString() ?? '—'}</span>
+                      <span className="stat-trend">
+                        <TrendingUp size={12} className="stat-trend-icon" />
+                        All time
+                      </span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                    <div className={`stat-icon-box ${colorClass}`}>
+                      <Icon size={22} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* ── Quick actions ── */}
             <section className="dashboard-section">
@@ -189,17 +202,29 @@ function Dashboard({ auth, onLogout }) {
             <section className="dashboard-section">
               <h2 className="dashboard-section-title">Recent Activity</h2>
               <div className="activity-card">
-                {loading && <p className="dashboard-loading" style={{ padding: '20px' }}>Loading…</p>}
+                {/* table header */}
+                <div className="activity-table-header">
+                  <span>Patient</span>
+                  <span>Eye</span>
+                  <span>Recommendation</span>
+                  <span>Time</span>
+                </div>
+                {loading && <p className="dashboard-loading" style={{ padding: '20px 20px' }}>Loading…</p>}
                 {!loading && activity.length === 0 && (
                   <p className="dashboard-empty">No recent assessments yet.</p>
                 )}
                 {!loading && activity.length > 0 && activity.map((item, i) => (
                   <div key={item.createdAt + i} className="activity-row">
-                    <span className={`activity-dot ${activityDot(item.recommendation)}`} />
-                    <div className="activity-body">
-                      <span className="activity-title">Patient {item.patientId} · Eye {item.eye}</span>
-                      <span className="activity-sub">{item.recommendation}</span>
+                    <div className="activity-patient-cell">
+                      <div className="activity-avatar">
+                        {String(item.patientId || '').slice(0,2).toUpperCase() || '—'}
+                      </div>
+                      <span className="activity-title">Patient {item.patientId}</span>
                     </div>
+                    <span className="activity-eye">{item.eye}</span>
+                    <span className={`activity-chip ${recChip(item.recommendation)}`}>
+                      {item.recommendation}
+                    </span>
                     <span className="activity-time">{formatTimeAgo(item.createdAt)}</span>
                   </div>
                 ))}

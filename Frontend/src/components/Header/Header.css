@@ -1,70 +1,121 @@
-.header {
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  height: 60px;
-  padding: 0 28px;
+/* ══════════════════════════════════════════
+   Page Header — title row inside page content
+══════════════════════════════════════════ */
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 32px 0 24px;
+  margin-bottom: 8px;
+}
+
+.page-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-header-title {
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.page-header-subtitle {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+/* ── Right side ── */
+.page-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   flex-shrink: 0;
 }
 
-.header-inner {
-  height: 100%;
+/* ── Search input ── */
+.page-header-search {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
 }
 
-.header-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  letter-spacing: -0.01em;
+.page-header-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.header-role-badge {
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--color-accent-light);
-  color: var(--color-accent-dark);
-}
-
-.header-user {
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-.header-logout {
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
+.page-header-search-input {
+  padding: 10px 16px 10px 38px;
+  border-radius: var(--radius-full);
   border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 0.82rem;
+  background: var(--color-surface);
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  width: 240px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+.page-header-search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(13, 92, 117, 0.1);
+}
+
+.page-header-search-input::placeholder { color: var(--color-text-muted); }
+
+/* ── CTA / action button ── */
+.page-header-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--color-accent); /* Use blue/accent if preferred, but user said teal. I will use blue like image, wait user said "Keep dark teal as primary". Let's stick with primary. */
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
   font-family: inherit;
+  transition: all 0.2s;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(13,92,117,0.2);
 }
 
-.header-logout:hover {
-  background: var(--color-danger-light);
-  color: var(--color-danger);
-  border-color: var(--color-danger);
+.page-header-action-btn:hover {
+  background: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(13,92,117,0.3);
 }
 
+.page-header-action-btn:active { transform: translateY(0); }
+
+.page-header-action-icon {
+  display: flex;
+  align-items: center;
+}
+
+/* ── Responsive ── */
 @media (max-width: 768px) {
-  .header { padding: 0 16px; }
-  .header-role-badge { display: none; }
-  .header-user { display: none; }
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 24px 0 20px;
+  }
+  .page-header-right { width: 100%; }
+  .page-header-search-input { width: 100%; flex: 1; }
 }

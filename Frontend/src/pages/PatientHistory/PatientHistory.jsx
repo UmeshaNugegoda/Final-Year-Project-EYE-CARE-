@@ -125,10 +125,13 @@ function PatientHistory({ auth, onLogout }) {
 
   return (
     <div className="app-shell">
-      <Sidebar auth={auth} />
+      <Sidebar auth={auth} onLogout={onLogout} />
       <div className="app-main">
-        <Header auth={auth} onLogout={onLogout} title="Patient History" />
         <main className="page-content">
+          <Header
+            title="Patient History"
+            subtitle={patientId ? `Assessment timeline for Patient ${patientId}${eye ? ` · Eye ${eye}` : ''}` : 'Select a patient to view their assessment timeline'}
+          />
           <div className="history-container">
         <section className="history-summary-card">
           <div className="history-summary-main">

@@ -1,27 +1,54 @@
 import React from 'react'
+import { Search } from 'lucide-react'
 import './Header.css'
 
-function Header({ auth, onLogout, title }) {
-  const isLoggedIn = !!auth?.user
-
+/**
+ * PageHeader — the in-page title row that appears below the top nav.
+ *
+ * Props:
+ *  title       — big h1 heading (required)
+ *  subtitle    — small description line below title
+ *  searchValue — controlled value for the optional search input
+ *  onSearch    — onChange callback for the search input
+ *  searchPlaceholder — placeholder text (default "Search here...")
+ *  action      — { label, onClick } for an optional CTA button on the right
+ */
+function Header({ title, subtitle, searchValue, onSearch, searchPlaceholder, action }) {
   return (
-    <header className="header">
-      <div className="header-inner">
-        <h1 className="header-title">
-          {title || 'Post-DALK Visual Correction Prediction'}
-        </h1>
-        {isLoggedIn && (
-          <div className="header-actions">
-            <span className="header-role-badge">
-              {auth.user.role === 'admin' ? 'Admin' : 'Clinician'}
-            </span>
-            <button type="button" className="header-logout" onClick={onLogout}>
-              Log out
-            </button>
-          </div>
-        )}
+    <div className="page-header">
+      <div className="page-header-left">
+        <h1 className="page-header-title">{title}</h1>
+        {subtitle && <p className="page-header-subtitle">{subtitle}</p>}
       </div>
-    </header>
+
+      {(onSearch || action) && (
+        <div className="page-header-right">
+          {onSearch && (
+            <div className="page-header-search">
+              <Search size={15} className="page-header-search-icon" />
+              <input
+                type="text"
+                className="page-header-search-input"
+                placeholder={searchPlaceholder || 'Search here...'}
+                value={searchValue || ''}
+                onChange={onSearch}
+                aria-label="Search"
+              />
+            </div>
+          )}
+          {action && (
+            <button
+              type="button"
+              className="page-header-action-btn"
+              onClick={action.onClick}
+            >
+              {action.icon && <span className="page-header-action-icon">{action.icon}</span>}
+              {action.label}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
