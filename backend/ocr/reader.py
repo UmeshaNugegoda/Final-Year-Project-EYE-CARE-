@@ -128,6 +128,13 @@ def run_ocr(image_path, image_type, eye):
 
         primary_results = _run_ocr_subprocess(primary_src)
 
+        # For topography: color clinic comparison reports (Tomey RT-7000 etc.)
+        # are destroyed by adaptive thresholding. If preprocessing yields very
+        # few chunks, retry on the raw image — it works much better.
+        if image_type == "topography" and len(primary_results) < 10 and pre_src is not None:
+            print("[OCR/topography] sparse after preprocessing — retrying raw image")
+            primary_results = _run_ocr_subprocess(image_path)
+
         # Pachymetry reports (Zeiss CIRRUS etc.) print OD and OS tables
         # side-by-side. Without column splitting, the spatial sort interleaves
         # both tables row-by-row, making eye section detection unreliable.

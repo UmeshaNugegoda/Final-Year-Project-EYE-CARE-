@@ -63,6 +63,11 @@ def _extract_sim_k_flat_steep_pair(text, eye):
     pair_patterns = (
         r"sim(?:ulated)?\s*k\s*[^\d]{0,40}?flat[^\d]{0,25}([-\d.]+)[^\d]{0,55}?steep[^\d]{0,25}([-\d.]+)",
         r"sim(?:ulated)?\s*k\s*[^\d]{0,40}?steep[^\d]{0,25}([-\d.]+)[^\d]{0,55}?flat[^\d]{0,25}([-\d.]+)",
+        # Tomey RT-7000 "Sim K's" compact two-row format (no flat/steep labels):
+        # e.g. "Sim K's 47.24 (2.77) 0.68 529 43.45 (Z.14) 0.70 278"
+        # K2 steep is the first value, K1 flat is the second.
+        # The k1,k2 = min,max swap below handles ordering automatically.
+        r"sim\s*k(?:'?s)?\s+([\d.]+)\s*\([^)]{1,12}\)[\s\S]{0,50}?([\d.]+)\s*\([^)]{1,12}\)",
     )
     for probe in (_keratometry_eye_scope(text, eye), text):
         if not probe or not probe.strip():
@@ -81,6 +86,113 @@ def _extract_sim_k_flat_steep_pair(text, eye):
             k1, k2 = (a, b) if a <= b else (b, a)
             if 30 <= k1 <= 65 and 30 <= k2 <= 65:
                 return k1, k2
+    return None, None
+
+
+# ── Tomey RT-7000 chunk-based extractor ──────────────────────────────────────
+
+def _extract_sim_k_from_chunks(chunks):
+    """
+    Tomey RT-7000 chunk-based extraction for the "Sim K's" section.
+
+    Two-pass approach:
+
+    Pass 1 — MM validation (handles comparison views where both eyes' data
+    is spatially interleaved after sorting):
+      Each K value in diopters is printed alongside its radius of curvature in mm.
+      The relationship is K_D × R_mm ≈ 337.5. By finding parenthesised mm values
+      "(7.28)" and pairing them with K candidates that satisfy this equation, we
+      identify the true K readings and reject color-scale and refraction values.
+
+    Pass 2 — Forward scan fallback (handles single-eye or images where mm values
+    are OCR-corrupted, e.g. "(7.14)" read as "(Z.14)"):
+      Scans forward from the first "Sim K's" label for the first two direct
+      K-range values (30–65 D), skipping parenthesised tokens.
+
+    Returns (K1_flat, K2_steep) or (None, None).
+    """
+    # Locate all "Sim K's" label positions.
+    # Use [\W]? to handle both ASCII and Unicode apostrophes returned by OCR.
+    sim_k_positions = [
+        i for i, c in enumerate(chunks)
+        if re.match(r"sim\s*k(?:[\W]?s)?\s*$", c.strip(), re.IGNORECASE)
+    ]
+    if not sim_k_positions:
+        return None, None
+
+    first_pos = sim_k_positions[0]
+    last_pos  = sim_k_positions[-1]
+
+    # Wide window covering all Sim K's positions + surrounding context
+    win_start = max(0, first_pos - 25)
+    win_end   = min(len(chunks), last_pos + 25)
+    window    = chunks[win_start : win_end]
+
+    # ── Pass 1: mm-validated K extraction ────────────────────────────────────
+    k_candidates  = []  # direct 30-65 D values
+    mm_candidates = []  # parenthesised radius values 5.0-9.5 mm
+
+    for c in window:
+        clean = re.sub(r'(\d+),\.(\d+)', r'\1.\2', c.strip())  # fix "51,.36"
+        if clean.startswith('('):
+            # Parenthesised token — only valid as a mm candidate
+            m = re.match(r'^\(?([\d.]+)\)?$', clean)
+            if m:
+                try:
+                    mv = float(m.group(1))
+                    if 5.0 <= mv <= 9.5:
+                        mm_candidates.append(round(mv, 3))
+                except ValueError:
+                    pass
+            continue  # never treat a parenthesised token as a K-diopter value
+        # Require a plain decimal number — rejects annotated values like "52.83D"
+        # (Central K in diopters) while accepting "47.24" or "51.36" (after comma fix)
+        if not re.match(r'^-?[\d]+\.[\d]+$', clean):
+            continue
+        try:
+            v = float(clean)
+        except ValueError:
+            continue
+        if 30.0 <= v <= 65.0:
+            k_candidates.append(round(v, 2))
+
+    if mm_candidates:
+        validated_k = []
+        for k_D in k_candidates:
+            expected_mm = 337.5 / k_D
+            for mm_val in mm_candidates:
+                if abs(mm_val - expected_mm) < 0.15:   # strict < to exclude boundary
+                    if k_D not in validated_k:
+                        validated_k.append(k_D)
+                    break
+        if len(validated_k) >= 2:
+            k1, k2 = min(validated_k), max(validated_k)
+            if 0 < (k2 - k1) <= 20:
+                return k1, k2
+
+    # ── Pass 2: forward scan from first "Sim K's" ────────────────────────────
+    k_vals = []
+    for c in chunks[first_pos + 1 : first_pos + 30]:
+        clean = re.sub(r'(\d+),\.(\d+)', r'\1.\2', c.strip())
+        if clean.startswith('('):
+            continue
+        num_str = re.sub(r'[^\d.]', '', clean)
+        if not num_str or '.' not in num_str:
+            continue
+        try:
+            v = float(num_str)
+        except ValueError:
+            continue
+        if 30.0 <= v <= 65.0:
+            k_vals.append(round(v, 2))
+            if len(k_vals) == 2:
+                break
+
+    if len(k_vals) >= 2:
+        k1, k2 = min(k_vals), max(k_vals)
+        if 0 < (k2 - k1) <= 20:
+            return k1, k2
+
     return None, None
 
 
@@ -148,6 +260,13 @@ def _extract_keratometry_separate(text, chunks, eye):
     Order: Sim K pair (same line) → OD/OS table rows → Ks/Kf labels → scoped regex.
     """
     out = {}
+
+    # Tomey RT-7000 chunk-based extraction (handles "Sim K's" label-free format)
+    ck1, ck2 = _extract_sim_k_from_chunks(chunks)
+    if ck1 is not None and ck2 is not None:
+        out["K1_diopters"] = ck1
+        out["K2_diopters"] = ck2
+        return out
 
     sk1, sk2 = _extract_sim_k_flat_steep_pair(text, eye)
     if sk1 is not None and sk2 is not None:
