@@ -117,3 +117,24 @@
   .form-row-3 { grid-template-columns: 1fr 1fr; }
   .form-row-3 > .form-group:first-child { grid-column: 1 / -1; }
 }
+
+/* ── Inline field validation ── */
+.form-group input.input-error,
+.form-group select.input-error {
+  border-color: #ef4444;
+  background: #fff5f5;
+}
+
+.form-group input.input-error:focus,
+.form-group select.input-error:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.field-error-msg {
+  font-size: 0.72rem;
+  color: #dc2626;
+  font-weight: 500;
+  margin-top: 1px;
+  line-height: 1.4;
+}

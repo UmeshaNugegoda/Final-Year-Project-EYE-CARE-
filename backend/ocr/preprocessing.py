@@ -127,18 +127,43 @@ def _get_skew_angle(gray):
 
 
 def _detect_hole_punches(bgr):
-    """Return True if ≥ 2 circular hole-punch marks are detected in the image."""
+    """
+    Return True if ≥ 2 genuine hole-punch marks are detected.
+
+    Three criteria must ALL pass for a circle to count:
+      1. Well-defined circle (param2=60, up from 30) — eliminates OCR character shapes.
+      2. Near the left or right edge (within 18% of image width) — real punch holes
+         are always near a margin; letter 'O' / digit '0' appear mid-page.
+      3. Very dark interior (mean pixel < 70) — a punch hole is a physical hole
+         (near-black); a printed character has a white interior.
+    """
     import cv2
     import numpy as np
+    h, w = bgr.shape[:2]
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (9, 9), 2)
     circles = cv2.HoughCircles(
         blurred, cv2.HOUGH_GRADIENT, dp=1.2, minDist=50,
-        param1=50, param2=30, minRadius=20, maxRadius=120,
+        param1=50, param2=60,       # was 30 — much stricter
+        minRadius=30, maxRadius=120, # was 20 — punches are large
     )
     if circles is None:
         return False
-    return len(circles[0]) >= 2
+
+    confirmed = []
+    for x, y, r in np.round(circles[0]).astype(int):
+        # Must sit within 18% of the left or right edge
+        near_edge = (x < w * 0.18) or (x > w * 0.82)
+        if not near_edge:
+            continue
+        # Interior must be very dark (physical hole ≈ black)
+        mask = np.zeros(gray.shape, dtype=np.uint8)
+        cv2.circle(mask, (x, y), max(r - 4, 5), 255, -1)
+        mean_val = cv2.mean(gray, mask=mask)[0]
+        if mean_val < 70:
+            confirmed.append((x, y, r))
+
+    return len(confirmed) >= 2
 
 
 def _mask_hole_punches(bgr):

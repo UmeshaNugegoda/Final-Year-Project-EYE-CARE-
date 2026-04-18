@@ -1,7 +1,7 @@
 import React from 'react'
 import './PatientInfo.css'
 
-function PatientInfo({ formData, handleInputChange }) {
+function PatientInfo({ formData, handleInputChange, handleBlur = () => {}, fieldErrors = {} }) {
   const handleEyeSelect = (eye) => {
     handleInputChange({ target: { name: 'eye', value: eye } })
   }
@@ -21,9 +21,12 @@ function PatientInfo({ formData, handleInputChange }) {
             name="patientId"
             value={formData.patientId}
             onChange={handleInputChange}
+            onBlur={handleBlur}
             placeholder="e.g. PT-001"
+            className={fieldErrors.patientId ? 'input-error' : ''}
             required
           />
+          {fieldErrors.patientId && <span className="field-error-msg">{fieldErrors.patientId}</span>}
         </div>
 
         <div className="form-group">
@@ -54,10 +57,15 @@ function PatientInfo({ formData, handleInputChange }) {
             name="monthsAfterDALK"
             value={formData.monthsAfterDALK}
             onChange={handleInputChange}
+            onBlur={handleBlur}
             placeholder="0"
             min="0"
+            max="120"
+            step="1"
+            className={fieldErrors.monthsAfterDALK ? 'input-error' : ''}
             required
           />
+          {fieldErrors.monthsAfterDALK && <span className="field-error-msg">{fieldErrors.monthsAfterDALK}</span>}
         </div>
       </div>
     </section>

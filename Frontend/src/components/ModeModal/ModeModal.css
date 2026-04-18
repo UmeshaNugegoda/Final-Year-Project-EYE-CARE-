@@ -40,13 +40,11 @@
 
 .mode-modal-warnings {
   list-style: none;
-  padding: 0;
+  padding: 10px 14px;
   margin: 0 0 16px;
   background: #fffbf0;
   border: 1px solid #f0c93a;
-  border-left: 4px solid #EF9F27;
   border-radius: 6px;
-  padding: 10px 14px;
 }
 
 .mode-modal-warning-item {
@@ -87,7 +85,9 @@
 }
 
 .mode-option:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: #b0b8c8;
+  background: #f8f9fb;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .mode-option-top {
@@ -110,14 +110,32 @@
   margin: 0;
 }
 
-/* Mode 3 — Manual entry (recommended, green) */
+/* Per-option tinted backgrounds — no left stripe, just a subtle wash */
 .mode-option--manual {
-  border-left: 4px solid #2e9a5f;
   background: #f6fbf8;
+  border-color: #c8e6d4;
 }
 .mode-option--manual:hover {
-  border-color: #2e9a5f;
-  background: #eef7f2;
+  background: #ecf7f1;
+  border-color: #a8d5bb;
+}
+
+.mode-option--reupload {
+  background: #f4f8ff;
+  border-color: #c5d8f5;
+}
+.mode-option--reupload:hover {
+  background: #eaf0ff;
+  border-color: #a5c0ee;
+}
+
+.mode-option--estimate {
+  background: #fffdf5;
+  border-color: #f0e0a0;
+}
+.mode-option--estimate:hover {
+  background: #fffaeb;
+  border-color: #e8cc70;
 }
 
 .mode-recommended-badge {
@@ -128,26 +146,6 @@
   border: 1px solid #b3e4c8;
   border-radius: 20px;
   padding: 2px 8px;
-}
-
-/* Mode 2 — Re-upload (blue) */
-.mode-option--reupload {
-  border-left: 4px solid #3a7bd5;
-  background: #f5f8ff;
-}
-.mode-option--reupload:hover {
-  border-color: #3a7bd5;
-  background: #edf2ff;
-}
-
-/* Mode 1 — Proceed with estimation (amber/caution) */
-.mode-option--estimate {
-  border-left: 4px solid #EF9F27;
-  background: #fffdf7;
-}
-.mode-option--estimate:hover {
-  border-color: #EF9F27;
-  background: #fffbec;
 }
 
 .mode-caution-badge {

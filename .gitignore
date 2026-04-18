@@ -51,6 +51,7 @@ venv/
 
 # Documentation
 docs/
+FEATURE_PROPOSALS.md
 
 # Local startup guide (personal reference, not for repo)
 STARTUP.md

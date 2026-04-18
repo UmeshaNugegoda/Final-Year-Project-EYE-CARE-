@@ -29,11 +29,92 @@ function Prediction({ auth, onLogout }) {
   const [qualityChecking,  setQualityChecking]  = useState({ ...EMPTY_CHECKING })
   const [submissionMode,   setSubmissionMode]   = useState(null)
   const [showModeModal,    setShowModeModal]    = useState(false)
+  const [modalTriggerType, setModalTriggerType] = useState(null)
   const [showManualForm,   setShowManualForm]   = useState(false)
+  const [fieldErrors,      setFieldErrors]      = useState({})
+
+  const validateField = (name, value) => {
+    switch (name) {
+      case 'patientId':
+        return value.trim() === '' ? 'Patient ID is required' : null
+      case 'monthsAfterDALK': {
+        if (value === '') return 'Required'
+        const n = Number(value)
+        if (isNaN(n) || !Number.isInteger(n)) return 'Must be a whole number'
+        if (n < 0) return 'Cannot be negative'
+        if (n > 120) return 'Value seems too high (max 120 months)'
+        return null
+      }
+      case 'ucva':
+      case 'bcva': {
+        if (value === '') return 'Required'
+        return snellenToLogmar(value) === null
+          ? 'Enter Snellen (e.g. 6/6, 6/60, 20/200) or CF / HM'
+          : null
+      }
+      case 'sphere': {
+        if (value === '') return 'Required'
+        const n = Number(value)
+        if (isNaN(n)) return 'Must be a number'
+        if (n < -25 || n > 25) return 'Expected −25 to +25 D'
+        return null
+      }
+      case 'cylinder': {
+        if (value === '') return 'Required'
+        const n = Number(value)
+        if (isNaN(n)) return 'Must be a number'
+        if (n < -12 || n > 12) return 'Expected −12 to +12 D'
+        return null
+      }
+      case 'axis': {
+        if (value === '') return 'Required'
+        const n = Number(value)
+        if (isNaN(n) || !Number.isInteger(n) || n < 0 || n > 180) return 'Must be 0–180°'
+        return null
+      }
+      case 'k1Override': {
+        if (value === '') return null
+        const n = Number(value)
+        if (isNaN(n) || n < 30 || n > 65) return 'K values expected 30–65 D'
+        return null
+      }
+      case 'k2Override': {
+        if (value === '') return null
+        const n = Number(value)
+        if (isNaN(n) || n < 30 || n > 65) return 'K values expected 30–65 D'
+        return null
+      }
+      case 'cylOverride': {
+        if (value === '') return null
+        const n = Number(value)
+        if (isNaN(n) || n < 0 || n > 10) return 'Expected 0–10 D'
+        return null
+      }
+      case 'cornealThickness': {
+        if (value === '') return null
+        const n = Number(value)
+        if (isNaN(n) || n < 150 || n > 1000) return 'Expected 150–1000 µm'
+        return null
+      }
+      default:
+        return null
+    }
+  }
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target
+    const error = validateField(name, value)
+    setFieldErrors(prev => ({ ...prev, [name]: error }))
+  }
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+    // Clear error as user corrects a previously flagged field
+    if (fieldErrors[name] !== undefined) {
+      const error = validateField(name, value)
+      setFieldErrors(prev => ({ ...prev, [name]: error }))
+    }
   }
 
   const handleImageUpload = async (type, e) => {
@@ -58,7 +139,8 @@ function Prediction({ auth, onLogout }) {
         const warnings = data.warnings?.[type] || []
         setQualityWarnings(prev => {
           const next = { ...prev, [type]: warnings }
-          if (type !== 'eye_measurements' && Object.values(next).some(w => w.length > 0)) {
+          if (next[type].length > 0) {
+            setModalTriggerType(type)
             setShowModeModal(true)
           }
           return next
@@ -85,12 +167,17 @@ function Prediction({ auth, onLogout }) {
       setShowModeModal(false)
       setSubmissionMode(null)
       setShowManualForm(false)
-      setQualityWarnings({ ...EMPTY_WARNINGS })
-      Object.values(images).forEach(img => { if (img?.preview) URL.revokeObjectURL(img.preview) })
-      setImages({ ...EMPTY_IMAGES })
+      if (modalTriggerType) {
+        // Only remove the specific image that had quality issues — leave others intact
+        if (images[modalTriggerType]?.preview) URL.revokeObjectURL(images[modalTriggerType].preview)
+        setImages(prev => ({ ...prev, [modalTriggerType]: null }))
+        setQualityWarnings(prev => ({ ...prev, [modalTriggerType]: [] }))
+      }
+      setModalTriggerType(null)
     } else {
       setSubmissionMode(mode)
       setShowModeModal(false)
+      setModalTriggerType(null)
       if (mode === 'manual') setShowManualForm(true)
     }
   }
@@ -102,17 +189,19 @@ function Prediction({ auth, onLogout }) {
   const hasEyeMeasurementImage    = !!images.eye_measurements
   const eyeMeasurementHasWarnings = (qualityWarnings.eye_measurements || []).length > 0
 
-  // OCR will cover VA + refraction — no manual entry needed
-  const ocrCoversInputs = hasEyeMeasurementImage && !eyeMeasurementHasWarnings
-
-  // Show the manual form when: user toggled it, quality warning forces fallback, or manual mode selected
-  const manualFormVisible = !ocrCoversInputs && (
-    showManualForm || eyeMeasurementHasWarnings || submissionMode === 'manual'
+  // OCR covers inputs when image is uploaded AND either it's clean or user chose to proceed anyway
+  const ocrCoversInputs = hasEyeMeasurementImage && (
+    !eyeMeasurementHasWarnings || submissionMode === 'ocr'
   )
+
+  // Show the manual form only when the user has explicitly requested it (via modal or toggle)
+  // Warnings alone no longer auto-open the form — user makes the choice in the modal first
+  const manualFormVisible = !ocrCoversInputs && (showManualForm || submissionMode === 'manual')
 
   // ── Validation ─────────────────────────────────────────────────────
   const isFormValid = () => {
     if (!formData.patientId.trim() || !formData.monthsAfterDALK) return false
+    if (Object.values(fieldErrors).some(e => e !== null && e !== undefined)) return false
     if (ocrCoversInputs) return true
     if (manualFormVisible) {
       return (
@@ -183,7 +272,7 @@ function Prediction({ auth, onLogout }) {
           <PredictionStepper activeStep={activeStep} />
 
           <div className="prediction-form">
-            <PatientInfo formData={formData} handleInputChange={handleInputChange} />
+            <PatientInfo formData={formData} handleInputChange={handleInputChange} handleBlur={handleBlur} fieldErrors={fieldErrors} />
 
             <ImageUpload
               images={images}
@@ -194,8 +283,8 @@ function Prediction({ auth, onLogout }) {
               submissionMode={submissionMode}
             />
 
-            {/* ── OCR covers inputs: show confirmation ── */}
-            {ocrCoversInputs && (
+            {/* ── OCR covers inputs: show confirmation (clean image only) ── */}
+            {ocrCoversInputs && !eyeMeasurementHasWarnings && (
               <div className="ocr-ready-note">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
@@ -209,8 +298,10 @@ function Prediction({ auth, onLogout }) {
               <NumericInputs
                 formData={formData}
                 handleInputChange={handleInputChange}
+                handleBlur={handleBlur}
+                fieldErrors={fieldErrors}
                 submissionMode={submissionMode}
-                showAsOcrFallback={eyeMeasurementHasWarnings}
+                showAsOcrFallback={eyeMeasurementHasWarnings && submissionMode === 'manual'}
               />
             )}
 
@@ -234,8 +325,8 @@ function Prediction({ auth, onLogout }) {
               </div>
             )}
 
-            {/* ── Collapse button when manual form is open without a quality issue ── */}
-            {manualFormVisible && !eyeMeasurementHasWarnings && submissionMode !== 'manual' && (
+            {/* ── Collapse button when manual form is open and user can close it ── */}
+            {manualFormVisible && submissionMode !== 'manual' && (
               <button
                 type="button"
                 className="manual-collapse-btn"
