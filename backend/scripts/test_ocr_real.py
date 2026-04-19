@@ -17,6 +17,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from ocr.reader import run_ocr
+from ocr.eye_measurements_extractor import extract_eye_measurements
 
 PASS = 0
 FAIL = 0
@@ -36,6 +37,14 @@ def fail(name, detail=""):
 def skip(name, reason=""):
     global SKIP; SKIP += 1
     print(f"  SKIP  {name}" + (f" — {reason}" if reason else ""))
+
+def check_str(name, extracted, expected):
+    if extracted is None:
+        fail(name, f"not extracted (expected {expected})")
+    elif extracted.upper() == expected.upper():
+        ok(f"{name}: {extracted}")
+    else:
+        fail(name, f"got {extracted}, expected {expected}")
 
 def check_value(name, extracted, expected, tol):
     if extracted is None:
@@ -139,6 +148,57 @@ if os.path.exists(img_path):
         skip("tharusha-pachy CCT (OS)", "extractor did not find CCT for OS eye")
 else:
     skip("tharusha-pach.jpg", "file not found")
+
+
+# ── achira-aberathne-eye.JPG — ASIRI Hospital (OD) ───────────────────────────
+# R: SPH=-1.50, CYL=-1.50, AXIS=20, DVA=6/9, Unaided VA Dist=6/24
+print("\n── achira-aberathne-eye.JPG (OD) ─────────────────────────────")
+img_path = os.path.join(TEST_DIR, "achira-aberathne-eye.JPG")
+if os.path.exists(img_path):
+    with open(img_path, 'rb') as f:
+        data = f.read()
+    r = extract_eye_measurements(data, eye='OD')
+    check_str  ("achira-eye UCVA",  r.get('ucva_snellen'),      "6/24")
+    check_str  ("achira-eye BCVA",  r.get('bcva_snellen'),      "6/9")
+    check_value("achira-eye SPH",   r.get('sphere_diopters'),   -1.50, 0.25)
+    check_value("achira-eye CYL",   r.get('cylinder_diopters'), -1.50, 0.25)
+    check_value("achira-eye AXIS",  r.get('axis_degrees'),       20,   5)
+else:
+    skip("achira-aberathne-eye.JPG", "file not found")
+
+
+# ── Tharusha-eye.jpg — ASIRI Hospital (OD) ───────────────────────────────────
+# R: SPH=-9.00, CYL=-2.50, AXIS=30, DVA=6/12, Unaided VA Dist=1/60
+print("\n── Tharusha-eye.jpg (OD) ──────────────────────────────────────")
+img_path = os.path.join(TEST_DIR, "Tharusha-eye.jpg")
+if os.path.exists(img_path):
+    with open(img_path, 'rb') as f:
+        data = f.read()
+    r = extract_eye_measurements(data, eye='OD')
+    check_str  ("tharusha-eye UCVA", r.get('ucva_snellen'),      "1/60")
+    check_str  ("tharusha-eye BCVA", r.get('bcva_snellen'),      "6/12")
+    check_value("tharusha-eye SPH",  r.get('sphere_diopters'),   -9.00, 0.25)
+    check_value("tharusha-eye CYL",  r.get('cylinder_diopters'), -2.50, 0.25)
+    check_value("tharusha-eye AXIS", r.get('axis_degrees'),       30,   5)
+else:
+    skip("Tharusha-eye.jpg", "file not found")
+
+
+# ── IMG_8883.JPG — Vasan Eye Care Hospital (OD) ──────────────────────────────
+# R: SPH=-3.00, CYL=-6.50, AXIS=10, DVA=6/60, Unaided VA Dist=4/60
+print("\n── IMG_8883.JPG — Vasan Eye Care (OD) ────────────────────────")
+img_path = os.path.join(TEST_DIR, "IMG_8883.JPG")
+if os.path.exists(img_path):
+    with open(img_path, 'rb') as f:
+        data = f.read()
+    r = extract_eye_measurements(data, eye='OD')
+    check_str  ("vasan-eye UCVA", r.get('ucva_snellen'),      "4/60")
+    check_str  ("vasan-eye BCVA", r.get('bcva_snellen'),      "6/60")
+    check_value("vasan-eye SPH",  r.get('sphere_diopters'),   -3.00, 0.25)
+    check_value("vasan-eye CYL",  r.get('cylinder_diopters'), -6.50, 0.25)
+    check_value("vasan-eye AXIS", r.get('axis_degrees'),       10,   5)
+else:
+    skip("IMG_8883.JPG", "file not found")
 
 
 print(f"\n── Results ───────────────────────────────────────────────────")

@@ -340,6 +340,29 @@ def _preprocess_topography_for_ocr(image_path):
     return cv2.cvtColor(th, cv2.COLOR_GRAY2RGB)
 
 
+def _preprocess_eye_measurements_for_ocr(image_path):
+    """
+    Resize a phone photo of a handwritten refraction form to a manageable size.
+    Keeps the original color — EasyOCR handles natural color images natively and
+    heavy grayscale/threshold pipelines destroy thin handwritten pen strokes.
+    """
+    import cv2
+
+    bgr = cv2.imread(image_path)
+    if bgr is None:
+        return image_path
+
+    h, w = bgr.shape[:2]
+    max_side = max(h, w)
+    if max_side > 1600:
+        scale = 1600 / max_side
+        bgr = cv2.resize(bgr, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    elif max_side < 800:
+        scale = 800 / max_side
+        bgr = cv2.resize(bgr, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    return bgr
+
+
 def get_color_layer_for_topography(image_path):
     """
     Returns the red/green colour-channel extraction for a topography image.

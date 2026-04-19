@@ -45,11 +45,12 @@ from .cct import (
 _WORKER = os.path.join(os.path.dirname(__file__), "_ocr_worker.py")
 
 
-def _run_ocr_subprocess(src):
+def _run_ocr_subprocess(src, min_conf=0.35):
     """
     Run EasyOCR in an isolated subprocess.
 
     src: file path (str) or preprocessed numpy array.
+    min_conf: minimum confidence threshold (default 0.35; use lower for handwriting).
     Returns list of [bbox, text, confidence] as plain Python types.
     Memory is released automatically when the child process exits.
     """
@@ -75,9 +76,7 @@ def _run_ocr_subprocess(src):
             print(f"[OCR worker] exit {proc.returncode}: {proc.stderr[:400]}")
             return []
         raw = json.loads(proc.stdout)
-        # Filter out low-confidence chunks — they introduce noise into extraction
-        MIN_CONF = 0.35
-        return [item for item in raw if float(item[2]) >= MIN_CONF]
+        return [item for item in raw if float(item[2]) >= min_conf]
     except subprocess.TimeoutExpired:
         print("[OCR worker] timed out after 300 s")
         return []
