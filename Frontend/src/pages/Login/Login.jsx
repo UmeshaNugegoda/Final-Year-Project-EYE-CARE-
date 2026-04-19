@@ -59,7 +59,7 @@ function Login({ setAuth }) {
       <div className="login-panel" aria-hidden="true">
         <div className="login-panel-content">
           <div className="login-panel-logo" style={{ backgroundImage: "url('/logo.png')", backgroundSize: 'cover' }}></div>
-          <h2 className="login-panel-title">Lumina</h2>
+          <h2 className="login-panel-title">EyeCare+</h2>
           <p className="login-panel-text">
             Post-DALK clinical decision support system for corneal transplant follow-up.
           </p>
@@ -78,7 +78,7 @@ function Login({ setAuth }) {
           <div className="login-header">
             <div className="login-logo" style={{ backgroundImage: "url('/logo.png')", backgroundSize: 'cover' }}></div>
             <h1 className="login-title">Welcome back</h1>
-            <p className="login-subtitle">Sign in to continue to Lumina</p>
+            <p className="login-subtitle">Sign in to continue to EyeCare+</p>
           </div>
 
           <div className="login-content">

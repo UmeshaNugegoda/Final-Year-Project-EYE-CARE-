@@ -37,7 +37,7 @@ function Sidebar({ auth, onLogout }) {
         <NavLink to="/dashboard" className="topnav-brand">
           <div className="topnav-logo" />
           <div className="topnav-brand-text">
-            <span className="topnav-brand-title">Lumina</span>
+            <span className="topnav-brand-title">EyeCare+</span>
           </div>
         </NavLink>
 
