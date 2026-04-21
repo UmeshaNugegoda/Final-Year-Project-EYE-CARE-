@@ -25,6 +25,22 @@
   margin-bottom: 14px;
 }
 
+.mode-modal-close {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #888;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+.mode-modal-close:hover {
+  color: #333;
+}
+
 .mode-modal-icon {
   font-size: 20px;
   flex-shrink: 0;

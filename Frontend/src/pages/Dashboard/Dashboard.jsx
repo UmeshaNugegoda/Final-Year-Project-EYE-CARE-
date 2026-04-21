@@ -51,6 +51,7 @@ function Dashboard({ auth, onLogout }) {
     ])
       .then(([r1, r2, r3]) => {
         if (cancelled) return
+        if (r1.status === 401 || r2.status === 401) { onLogout(); return }
         if (!r1.ok) throw new Error('Failed to load stats')
         if (!r2.ok) throw new Error('Failed to load activity')
         return Promise.all([r1.json(), r2.json(), r3.ok ? r3.json() : Promise.resolve({ due: [] })])

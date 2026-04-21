@@ -8,3 +8,5 @@ pandas
 scikit-learn
 scipy
 xgboost
+anthropic>=0.25.0
+Flask-Limiter>=3.5.0

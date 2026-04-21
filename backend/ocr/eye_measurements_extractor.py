@@ -15,9 +15,87 @@ Target fields per eye:
 import re
 import tempfile
 import os
+import base64
+import json
 
 from .reader import _run_ocr_subprocess
 from .preprocessing import _preprocess_eye_measurements_for_ocr
+
+_FIELDS = ('ucva_snellen', 'bcva_snellen', 'sphere_diopters', 'cylinder_diopters', 'axis_degrees')
+
+_VLM_PROMPT = """\
+This is an ophthalmology refraction/prescription form. Extract values for the {eye_label} eye only.
+
+Return ONLY a JSON object (no markdown, no extra text) with exactly these keys:
+{{
+  "ucva_snellen": "distance unaided VA e.g. 6/12, 1/60, 4/60 — null if not found",
+  "bcva_snellen": "best corrected distance VA from the Rx/prescription table e.g. 6/9 — null if not found",
+  "sphere_diopters": numeric or null,
+  "cylinder_diopters": numeric (must be ≤ 0) or null,
+  "axis_degrees": integer 0–180 or null
+}}
+
+Rules:
+- ucva_snellen and bcva_snellen must be distance Snellen fractions (X/Y format) or CF/HM/PL — NOT near-vision codes like N6 or N8.
+- cylinder_diopters must always be negative or zero.
+- Return null for any field you cannot read clearly.
+"""
+
+
+def extract_eye_measurements_vlm(image_bytes, eye='OD'):
+    """
+    Extract refractive data using Claude Haiku vision.
+    Requires ANTHROPIC_API_KEY in the environment.
+    Returns the same shape as extract_eye_measurements().
+    """
+    import anthropic
+
+    eye_label = 'right eye (OD — look for the R row)' if eye == 'OD' else 'left eye (OS — look for the L row)'
+
+    # Detect media type from magic bytes
+    media_type = 'image/jpeg'
+    if image_bytes[:4] == b'\x89PNG':
+        media_type = 'image/png'
+
+    b64 = base64.standard_b64encode(image_bytes).decode()
+
+    client = anthropic.Anthropic()
+    msg = client.messages.create(
+        model='claude-sonnet-4-6',
+        max_tokens=300,
+        messages=[{
+            'role': 'user',
+            'content': [
+                {'type': 'image', 'source': {'type': 'base64', 'media_type': media_type, 'data': b64}},
+                {'type': 'text', 'text': _VLM_PROMPT.format(eye_label=eye_label)},
+            ]
+        }]
+    )
+
+    raw = msg.content[0].text.strip()
+    if raw.startswith('```'):
+        raw = re.sub(r'^```[a-z]*\n?', '', raw)
+        raw = re.sub(r'\n?```$', '', raw)
+    raw = raw.strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        print(f"[VLM] non-JSON response: {raw[:120]!r}")
+        return {k: None for k in _FIELDS} | {'eye_extraction_status': {k: 'not_found' for k in _FIELDS}}
+
+    result = {k: data.get(k) for k in _FIELDS}
+
+    # Normalise cylinder sign
+    if result['cylinder_diopters'] is not None:
+        result['cylinder_diopters'] = -abs(float(result['cylinder_diopters']))
+
+    # Enforce axis range
+    if result['axis_degrees'] is not None:
+        v = int(result['axis_degrees'])
+        result['axis_degrees'] = v if 0 <= v <= 180 else None
+
+    status = {k: ('extracted' if result[k] is not None else 'not_found') for k in _FIELDS}
+    return {**result, 'eye_extraction_status': status}
 
 _EYE_MIN_CONF = 0.25   # handwritten OCR is lower confidence
 
