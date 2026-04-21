@@ -8,7 +8,8 @@ import re
 
 _TOPO_PROMPT = """\
 This is a corneal topography report (e.g. Tomey RT-7000 or similar device printout).
-Extract keratometry values for the {eye_label} eye.
+Extract the keratometry values from this report. The report may be labelled OD or OS — \
+extract whatever K values are present regardless of which eye is shown.
 
 Return ONLY a JSON object (no markdown, no extra text) with exactly these keys:
 {{
@@ -21,7 +22,7 @@ Rules:
 - K1 is the flatter (smaller) meridian, K2 is the steeper (larger) meridian.
 - K1 must be ≤ K2.
 - astigmatism_diopters = K2 − K1 (always positive).
-- Look for "Sim K", "K flat / K steep", "Kf / Ks", or similar labels.
+- Look for "Sim K", "K1 / K2", "K flat / K steep", "Kf / Ks", or numeric values near meridian angles.
 - Return null for any field you cannot read clearly.
 """
 
