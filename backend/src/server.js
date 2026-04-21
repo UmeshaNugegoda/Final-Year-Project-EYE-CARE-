@@ -104,10 +104,12 @@ const logmarToDecimal = (v) =>
 function snellenToLogmar(snellen) {
   if (!snellen) return null
   const s = String(snellen).trim().toUpperCase().replace(/\s/g, '')
-  const m6  = s.match(/^6\/(\d+)/)
-  if (m6)  return Math.round(Math.log10(Number(m6[1])  / 6)  * 1000) / 1000
-  const m20 = s.match(/^20\/(\d+)/)
-  if (m20) return Math.round(Math.log10(Number(m20[1]) / 20) * 1000) / 1000
+  // Any X/Y fraction — logMAR = log10(Y/X)
+  const mFrac = s.match(/^(\d+)\/(\d+)$/)
+  if (mFrac) {
+    const num = Number(mFrac[1]), den = Number(mFrac[2])
+    if (num > 0 && den > 0) return Math.round(Math.log10(den / num) * 1000) / 1000
+  }
   if (s === 'CF')  return 1.8
   if (s === 'HM')  return 2.3
   if (s === 'PL')  return 2.9
@@ -464,11 +466,11 @@ app.post(
 
       // Build display values including eye-measurement OCR fields
       const ucvaDisplay = ocrUcva
-        ? `${ocrUcva} (OCR) → logMAR ${effectiveUcvaLogmar} → decimal ${ucva_decimal}`
-        : (effectiveUcvaLogmar != null ? `${effectiveUcvaLogmar} logMAR → ${ucva_decimal} decimal` : null)
+        ? `${ocrUcva} (OCR)`
+        : (effectiveUcvaLogmar != null ? `${effectiveUcvaLogmar} logMAR` : null)
       const bcvaDisplay = ocrBcva
-        ? `${ocrBcva} (OCR) → logMAR ${effectiveBcvaLogmar} → decimal ${bcva_decimal}`
-        : (effectiveBcvaLogmar != null ? `${effectiveBcvaLogmar} logMAR → ${bcva_decimal} decimal` : null)
+        ? `${ocrBcva} (OCR)`
+        : (effectiveBcvaLogmar != null ? `${effectiveBcvaLogmar} logMAR` : null)
 
       return res.json({
         recommended  : ml.prediction,

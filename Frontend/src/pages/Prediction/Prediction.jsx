@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Header             from '../../components/Header/Header'
 import Sidebar            from '../../components/Sidebar/Sidebar'
 import PredictionStepper  from '../../components/PredictionStepper/PredictionStepper'
@@ -32,6 +32,14 @@ function Prediction({ auth, onLogout }) {
   const [modalTriggerType, setModalTriggerType] = useState(null)
   const [showManualForm,   setShowManualForm]   = useState(false)
   const [fieldErrors,      setFieldErrors]      = useState({})
+  const [vlmAvailable,     setVlmAvailable]     = useState(false)
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(d => setVlmAvailable(!!d.vlm_available))
+      .catch(() => {})
+  }, [])
 
   const validateField = (name, value) => {
     switch (name) {
@@ -141,7 +149,7 @@ function Prediction({ auth, onLogout }) {
           const next = { ...prev, [type]: warnings }
           if (next[type].length > 0) {
             setModalTriggerType(type)
-            setShowModeModal(true)
+            if (!vlmAvailable) setShowModeModal(true)
           }
           return next
         })
@@ -160,6 +168,21 @@ function Prediction({ auth, onLogout }) {
     setQualityChecking(prev => ({ ...prev, [type]: false }))
     setSubmissionMode(null)
     setShowModeModal(false)
+  }
+
+  const handleClear = () => {
+    Object.values(images).forEach(img => { if (img?.preview) URL.revokeObjectURL(img.preview) })
+    setFormData({ patientId: '', eye: 'OD', monthsAfterDALK: '', ucva: '', bcva: '', sphere: '', cylinder: '', axis: '', cornealThickness: '', k1Override: '', k2Override: '', cylOverride: '' })
+    setImages({ ...EMPTY_IMAGES })
+    setQualityWarnings({ ...EMPTY_WARNINGS })
+    setQualityChecking({ ...EMPTY_CHECKING })
+    setSubmissionMode(null)
+    setShowModeModal(false)
+    setModalTriggerType(null)
+    setShowManualForm(false)
+    setFieldErrors({})
+    setResult(null)
+    setError(null)
   }
 
   const handleModeSelect = (mode) => {
@@ -213,7 +236,11 @@ function Prediction({ auth, onLogout }) {
     return false
   }
 
-  const activeStep = formData.patientId && formData.monthsAfterDALK ? 2 : 1
+  const hasAnyImage = !!(images.topography || images.pachymetry || images.eye_measurements)
+  const hasMeasurements = ocrCoversInputs || (manualFormVisible && formData.ucva && formData.bcva && formData.sphere !== '' && formData.cylinder !== '' && formData.axis !== '')
+  const step1Done = !!(formData.patientId && formData.monthsAfterDALK)
+  const step2Done = step1Done && (hasAnyImage || hasMeasurements)
+  const activeStep = !step1Done ? 1 : !step2Done ? 2 : 3
 
   const handlePredict = async () => {
     if (!isFormValid() || isSubmitting) return
@@ -267,6 +294,7 @@ function Prediction({ auth, onLogout }) {
           <Header
             title="New Assessment"
             subtitle="Upload corneal images and run a post-DALK correction prediction"
+            action={{ label: 'Clear', onClick: handleClear, className: 'page-header-action-btn--danger' }}
           />
 
           <PredictionStepper activeStep={activeStep} />
@@ -281,6 +309,8 @@ function Prediction({ auth, onLogout }) {
               qualityWarnings={qualityWarnings}
               qualityChecking={qualityChecking}
               submissionMode={submissionMode}
+              vlmAvailable={vlmAvailable}
+              onManualEntry={() => setShowManualForm(true)}
             />
 
             {/* ── OCR covers inputs: show confirmation (clean image only) ── */}
@@ -359,6 +389,7 @@ function Prediction({ auth, onLogout }) {
         <ModeModal
           qualityWarnings={qualityWarnings}
           onModeSelect={handleModeSelect}
+          onClose={() => handleModeSelect('reupload')}
         />
       )}
     </div>

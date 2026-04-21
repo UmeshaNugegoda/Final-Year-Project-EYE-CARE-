@@ -65,7 +65,8 @@ function WarningChips({ warnings }) {
   )
 }
 
-function UploadCard({ scanner, image, onUpload, onRemove, warnings, checking }) {
+function UploadCard({ scanner, image, onUpload, onRemove, warnings, checking, vlmAvailable, onManualEntry }) {
+  const hasWarnings = warnings && warnings.length > 0
   return (
     <div className="upload-card">
       <div className="upload-card-header">
@@ -106,6 +107,16 @@ function UploadCard({ scanner, image, onUpload, onRemove, warnings, checking }) 
             </div>
           )}
           <WarningChips warnings={warnings} />
+          {vlmAvailable && hasWarnings && (
+            <div className="image-quality-ai-note">
+              <span>AI will attempt extraction anyway</span>
+              {scanner.key === 'eye_measurements' && onManualEntry && (
+                <button type="button" className="image-quality-manual-link" onClick={onManualEntry}>
+                  Enter values manually instead
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -119,6 +130,8 @@ function ImageUpload({
   qualityWarnings = {},
   qualityChecking = {},
   submissionMode  = null,
+  vlmAvailable    = false,
+  onManualEntry   = null,
 }) {
   return (
     <section className="form-card scanner-card">
@@ -127,7 +140,7 @@ function ImageUpload({
         <p className="form-card-subtitle">
           {submissionMode === 'manual'
             ? 'Manual entry selected — image upload skipped'
-            : 'Upload report images for automatic OCR extraction'}
+            : 'Upload report images for automatic extraction'}
         </p>
       </div>
 
@@ -136,7 +149,7 @@ function ImageUpload({
           Images will not be processed. Enter values directly in the Measurements section below.
         </div>
       ) : (
-        <div className={`upload-grid${submissionMode === 'manual' ? ' upload-grid-hidden' : ''}`}>
+        <div className="upload-grid">
           {SCANNERS.map(s => (
             <UploadCard
               key={s.key}
@@ -146,6 +159,8 @@ function ImageUpload({
               onRemove={removeImage}
               warnings={qualityWarnings[s.key]}
               checking={qualityChecking[s.key]}
+              vlmAvailable={vlmAvailable}
+              onManualEntry={onManualEntry}
             />
           ))}
         </div>

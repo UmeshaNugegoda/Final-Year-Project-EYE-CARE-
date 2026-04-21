@@ -16,8 +16,23 @@ Tolerances:
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+# Load .env from backend/ so ANTHROPIC_API_KEY is available without shell export
+_env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _, _v = _line.partition('=')
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 from ocr.reader import run_ocr
-from ocr.eye_measurements_extractor import extract_eye_measurements
+if os.environ.get('ANTHROPIC_API_KEY'):
+    from ocr.eye_measurements_extractor import extract_eye_measurements_vlm as extract_eye_measurements
+    print('[test] Using VLM extractor (Claude Sonnet)')
+else:
+    from ocr.eye_measurements_extractor import extract_eye_measurements
+    print('[test] Using EasyOCR extractor (set ANTHROPIC_API_KEY to use VLM)')
 
 PASS = 0
 FAIL = 0

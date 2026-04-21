@@ -39,7 +39,7 @@ function Header({ title, subtitle, searchValue, onSearch, searchPlaceholder, act
           {action && (
             <button
               type="button"
-              className="page-header-action-btn"
+              className={`page-header-action-btn${action.className ? ` ${action.className}` : ''}`}
               onClick={action.onClick}
             >
               {action.icon && <span className="page-header-action-icon">{action.icon}</span>}

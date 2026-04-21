@@ -1,7 +1,7 @@
 import React from 'react'
 import './ModeModal.css'
 
-function ModeModal({ qualityWarnings = {}, onModeSelect }) {
+function ModeModal({ qualityWarnings = {}, onModeSelect, onClose }) {
   // Collect all unique warnings across all three image types
   const allWarnings = []
   for (const type of ['topography', 'pachymetry', 'eye_measurements']) {
@@ -17,6 +17,9 @@ function ModeModal({ qualityWarnings = {}, onModeSelect }) {
         <div className="mode-modal-header">
           <span className="mode-modal-icon">⚠</span>
           <h2 id="mode-modal-title" className="mode-modal-title">Image Quality Issues Detected</h2>
+          {onClose && (
+            <button type="button" className="mode-modal-close" onClick={onClose} aria-label="Close">✕</button>
+          )}
         </div>
 
         {allWarnings.length > 0 && (
@@ -68,12 +71,12 @@ function ModeModal({ qualityWarnings = {}, onModeSelect }) {
             onClick={() => onModeSelect('ocr')}
           >
             <div className="mode-option-top">
-              <span className="mode-option-label">Proceed with Estimation</span>
+              <span className="mode-option-label">Try OCR Anyway</span>
               <span className="mode-caution-badge">Not for clinical decisions</span>
             </div>
             <p className="mode-option-desc">
-              Run OCR anyway. Any values that cannot be extracted will be filled
-              using population averages. The result will display a disclaimer.
+              Run standard OCR on the image. Values that can't be read will be
+              filled using population averages. The result will display a disclaimer.
             </p>
           </button>
 

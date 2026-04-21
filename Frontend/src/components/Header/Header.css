@@ -103,6 +103,17 @@
 
 .page-header-action-btn:active { transform: translateY(0); }
 
+.page-header-action-btn--danger {
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(220,38,38,0.25);
+}
+.page-header-action-btn--danger:hover {
+  background: #b91c1c;
+  box-shadow: 0 6px 16px rgba(220,38,38,0.35);
+}
+
 .page-header-action-icon {
   display: flex;
   align-items: center;

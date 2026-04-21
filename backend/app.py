@@ -4,8 +4,20 @@ import pandas as pd
 import tempfile
 import os
 
+# Load .env so ANTHROPIC_API_KEY is available without manual shell export
+_env_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _, _v = _line.partition('=')
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from ocr.reader import run_ocr, _run_ocr_subprocess
 from ocr.utils import calculate_k2
@@ -15,6 +27,9 @@ from ocr.preprocessing import _analyze_image_quality
 app = Flask(__name__)
 CORS(app)
 
+# Rate limiting — only applies to VLM (Anthropic API) path on /api/extract
+limiter = Limiter(get_remote_address, app=app, default_limits=[])
+
 # ── ML model ──────────────────────────────────────────────────────────────────
 MODEL    = joblib.load("eye_correction_model.pkl")
 LE       = joblib.load("label_encoder.pkl")
@@ -22,6 +37,13 @@ SCALER   = joblib.load("scaler.pkl")
 IMPUTER  = joblib.load("imputer.pkl")
 FEATURES = joblib.load("feature_names.pkl")
 print(f"Model loaded | Features: {FEATURES} | Classes: {list(LE.classes_)}")
+_api_key_present = bool(os.environ.get("ANTHROPIC_API_KEY"))
+try:
+    import anthropic as _anthropic_check  # noqa: F401
+    _anthropic_pkg = True
+except ImportError:
+    _anthropic_pkg = False
+print(f"VLM status: {'ENABLED (Claude Sonnet)' if _api_key_present and _anthropic_pkg else 'DISABLED — ' + ('anthropic package missing' if _api_key_present else 'no ANTHROPIC_API_KEY in env')}")
 
 # Compatibility shim for models pickled with older scikit-learn versions.
 if not hasattr(IMPUTER, "_fill_dtype"):
@@ -34,13 +56,32 @@ if not hasattr(IMPUTER, "_fill_dtype"):
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/api/extract", methods=["POST"])
+@limiter.limit(
+    "5 per minute; 50 per day",
+    exempt_when=lambda: not bool(os.environ.get("ANTHROPIC_API_KEY")),
+    error_message='{"error": "VLM rate limit exceeded. Max 5 requests/minute and 50/day."}',
+)
 def extract():
     eye = request.form.get("eye", "OD").upper()
+    use_vlm = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    if use_vlm:
+        try:
+            import anthropic as _anthropic_check  # noqa: F401
+        except ImportError:
+            use_vlm = False
+            print("[WARNING] ANTHROPIC_API_KEY set but 'anthropic' package not installed — falling back to EasyOCR")
+    print(f"[extract] eye={eye} use_vlm={use_vlm}")
     extracted, temps = {}, []
     try:
         for img_key, img_type in [("topography", "topography"), ("pachymetry", "pachymetry")]:
-            if img_key in request.files:
-                f = request.files[img_key]
+            if img_key not in request.files:
+                continue
+            f = request.files[img_key]
+            if use_vlm:
+                from ocr.vlm import extract_image_vlm
+                part = extract_image_vlm(f.read(), img_type, eye)
+                print(f"[VLM/{img_type}/{eye}] {part}")
+            else:
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.filename)[1] or ".jpg")
                 tmp_path = tmp.name
                 tmp.close()
@@ -48,21 +89,21 @@ def extract():
                 temps.append(tmp_path)
                 part = run_ocr(tmp_path, img_type, eye)
 
-                # Merge with source priority:
-                # - topography owns K values + astigmatism
-                # - pachymetry owns corneal thickness
-                if img_type == "topography":
-                    for key in ["K1_diopters", "K2_diopters", "astigmatism_diopters"]:
-                        if key in part and part[key] is not None:
-                            extracted[key] = part[key]
-                    if "corneal_thickness_um" in part and part["corneal_thickness_um"] is not None and "corneal_thickness_um" not in extracted:
-                        extracted["corneal_thickness_um"] = part["corneal_thickness_um"]
-                else:  # pachymetry
-                    if "corneal_thickness_um" in part and part["corneal_thickness_um"] is not None:
-                        extracted["corneal_thickness_um"] = part["corneal_thickness_um"]
-                    for key in ["K1_diopters", "K2_diopters", "astigmatism_diopters"]:
-                        if key in part and part[key] is not None and key not in extracted:
-                            extracted[key] = part[key]
+            # Merge with source priority:
+            # - topography owns K values + astigmatism
+            # - pachymetry owns corneal thickness
+            if img_type == "topography":
+                for key in ["K1_diopters", "K2_diopters", "astigmatism_diopters"]:
+                    if key in part and part[key] is not None:
+                        extracted[key] = part[key]
+                if "corneal_thickness_um" in part and part["corneal_thickness_um"] is not None and "corneal_thickness_um" not in extracted:
+                    extracted["corneal_thickness_um"] = part["corneal_thickness_um"]
+            else:  # pachymetry
+                if "corneal_thickness_um" in part and part["corneal_thickness_um"] is not None:
+                    extracted["corneal_thickness_um"] = part["corneal_thickness_um"]
+                for key in ["K1_diopters", "K2_diopters", "astigmatism_diopters"]:
+                    if key in part and part[key] is not None and key not in extracted:
+                        extracted[key] = part[key]
 
         if (
             extracted.get("K2_diopters") is None
@@ -76,13 +117,17 @@ def extract():
             for key in ["K1_diopters", "K2_diopters", "astigmatism_diopters", "corneal_thickness_um"]
         }
 
-        # ── Eye measurements report (third scanner) ───────────────
+        # ── Eye measurements report (handwritten refraction form) ─────
         eye_meas_file = request.files.get("eye_measurements")
         if eye_meas_file:
-            from ocr.eye_measurements_extractor import extract_eye_measurements
-            em_result = extract_eye_measurements(eye_meas_file.read(), eye=eye)
+            eye_meas_bytes = eye_meas_file.read()
+            if use_vlm:
+                from ocr.eye_measurements_extractor import extract_eye_measurements_vlm
+                em_result = extract_eye_measurements_vlm(eye_meas_bytes, eye=eye)
+            else:
+                from ocr.eye_measurements_extractor import extract_eye_measurements
+                em_result = extract_eye_measurements(eye_meas_bytes, eye=eye)
             em_status = em_result.pop("eye_extraction_status", {})
-            # Merge into extracted + status
             for field in ["ucva_snellen", "bcva_snellen", "sphere_diopters", "cylinder_diopters", "axis_degrees"]:
                 if em_result.get(field) is not None:
                     extracted[field] = em_result[field]
@@ -181,7 +226,12 @@ def predict():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok", "features": FEATURES, "classes": list(LE.classes_)})
+    return jsonify({
+        "status": "ok",
+        "features": FEATURES,
+        "classes": list(LE.classes_),
+        "vlm_available": bool(os.environ.get("ANTHROPIC_API_KEY")),
+    })
 
 
 @app.route("/api/debug", methods=["POST"])
