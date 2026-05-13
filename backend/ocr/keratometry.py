@@ -196,6 +196,47 @@ def _extract_sim_k_from_chunks(chunks):
     return None, None
 
 
+def _extract_ret7000_comparison_simk(text, eye):
+    """
+    Fallback for comparison-style RET-700 reports that print:
+    "Right Center ... Sim K's ..." and "Left Center ... Sim K's ...".
+
+    We keep this isolated as an additive parser so existing extraction logic is
+    unchanged for all currently supported formats.
+    """
+    if not text:
+        return None, None
+
+    eye_header = "right" if (eye or "OD").upper() == "OD" else "left"
+    section_re = re.compile(
+        rf"{eye_header}\s*center[\s\S]{{0,800}}?sim\s*k(?:[\W]?s)?([\s\S]{{0,300}}?)(?:kisa%|geometric\s*values|ref\s*\(vd=0\)|other|$)",
+        re.IGNORECASE,
+    )
+    m = section_re.search(text)
+    if not m:
+        return None, None
+
+    section = m.group(1)
+    # Capture two-decimal values and keep clinically plausible keratometry only.
+    vals = []
+    for n in re.finditer(r"(?<!\d)(\d{2}\.\d{2})(?!\d)", section):
+        try:
+            fv = float(n.group(1))
+        except ValueError:
+            continue
+        if 30.0 <= fv <= 65.0 and fv not in vals:
+            vals.append(round(fv, 2))
+        if len(vals) >= 2:
+            break
+
+    if len(vals) < 2:
+        return None, None
+    k1, k2 = min(vals), max(vals)
+    if 0 < (k2 - k1) <= 20:
+        return k1, k2
+    return None, None
+
+
 # ── Ks / Kf label extraction ──────────────────────────────────────────────────
 
 def extract_ks_kf(text, chunks, eye):
@@ -260,6 +301,13 @@ def _extract_keratometry_separate(text, chunks, eye):
     Order: Sim K pair (same line) → OD/OS table rows → Ks/Kf labels → scoped regex.
     """
     out = {}
+
+    # Dedicated fallback for RET-700 comparison print layout (Right/Left Center).
+    rk1, rk2 = _extract_ret7000_comparison_simk(text, eye)
+    if rk1 is not None and rk2 is not None:
+        out["K1_diopters"] = rk1
+        out["K2_diopters"] = rk2
+        return out
 
     # Tomey RT-7000 chunk-based extraction (handles "Sim K's" label-free format)
     ck1, ck2 = _extract_sim_k_from_chunks(chunks)

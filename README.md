@@ -33,6 +33,7 @@ Frontend (React/Vite)  →  Node/Express Backend  →  Flask ML Service
 - **Node.js** v18+
 - **Python** 3.9+ (with pip)
 - **MongoDB** (local or Atlas) — the app falls back to an in-memory store if `MONGODB_URI` is not set
+- **Anthropic API key** (optional but recommended) — enables Claude Sonnet vision for OCR; without it the system falls back to EasyOCR
 
 ---
 
@@ -54,6 +55,9 @@ MONGODB_URI=mongodb://localhost:27017/postdalk
 JWT_SECRET=your_secret_key_here
 PORT=4000
 FLASK_URL=http://localhost:5001
+
+# Optional — enables Claude Sonnet vision (recommended for best OCR accuracy)
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### 3. Install dependencies
@@ -70,20 +74,43 @@ cd backend
 npm install
 ```
 
-**Flask ML service:**
+**Flask ML service — create and activate a Python virtual environment first:**
+
+macOS / Linux:
 ```bash
 cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows (PowerShell):
+```powershell
+cd backend
+python -m venv venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
 ### 4. Start all three services
 
-Open three terminal windows:
+Open three terminal windows. Make sure the virtual environment is activated in the Flask terminal.
 
 **Terminal 1 — Flask ML service (port 5001):**
+
+macOS / Linux:
 ```bash
 cd backend
-python3 app.py
+source venv/bin/activate
+python app.py
+```
+
+Windows (PowerShell):
+```powershell
+cd backend
+.\venv\Scripts\Activate.ps1
+python app.py
 ```
 
 **Terminal 2 — Node backend (port 4000):**
@@ -175,7 +202,7 @@ The system extracts values from two types of report images:
 | Pachymetry | Zeiss CIRRUS | Central Corneal Thickness (CCT) |
 | Topography | Tomey RT-7000 | K1, K2, Astigmatism (CYL) |
 
-Preprocessing handles low-contrast scans, colored text (red/green K-values), slight rotation, and edge clipping.
+When `ANTHROPIC_API_KEY` is set, Claude Sonnet vision is used as the primary extractor (more robust, handles angled/blurry images). EasyOCR is used as a fallback when no API key is present.
 
 ---
 
@@ -211,6 +238,6 @@ Expected output: `8/12` or better checks passing. The 4 clean-image tests (Zeiss
 |-----------|-----------|
 | Frontend | React 18, React Router v6, Vite |
 | Node backend | Express, JWT, Multer, MongoDB driver |
-| ML service | Flask, EasyOCR, OpenCV, XGBoost, scikit-learn |
+| ML service | Flask, Claude Sonnet (VLM), EasyOCR fallback, OpenCV, XGBoost, scikit-learn |
 | Database | MongoDB (`postdalk` db) with in-memory fallback |
 | Model format | XGBoost (`.pkl` via joblib) |

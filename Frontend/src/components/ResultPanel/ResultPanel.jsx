@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { ScanLine, AlertTriangle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { ScanLine, AlertTriangle, TrendingUp, TrendingDown, Minus, Printer } from 'lucide-react'
+import { jsPDF } from 'jspdf'
 import './ResultPanel.css'
 
 const KEY_TO_STATUS_FIELD = {
@@ -57,68 +58,78 @@ function ResultPanel({ result, auth }) {
   const hasOcr = !!result.extractedValues
 
   const handleDownloadPdf = () => {
-    const win = window.open('', '_blank')
-    if (!win) return
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const left = 40
+    const right = pageWidth - 40
+    const bottom = pageHeight - 40
+    let y = 44
 
-    const statusLabel = (key) => {
-      const s = result.extractionStatus?.[key]
-      if (s === 'extracted')       return ' [Extracted]'
-      if (s === 'manual_override') return ' [Manual override]'
-      return ' [Estimated]'
+    const addLine = (text, opts = {}) => {
+      const {
+        size = 10,
+        bold = false,
+        gapAfter = 8,
+      } = opts
+      doc.setFont('helvetica', bold ? 'bold' : 'normal')
+      doc.setFontSize(size)
+      const wrapped = doc.splitTextToSize(String(text), right - left)
+      wrapped.forEach((line) => {
+        if (y > bottom) {
+          doc.addPage()
+          y = 44
+        }
+        doc.text(line, left, y)
+        y += size + 4
+      })
+      y += gapAfter
     }
 
-    const extractedRows = result.extractedValues
-      ? Object.entries(result.extractedValues)
-          .map(([key, val]) => {
-            const fk = KEY_TO_STATUS_FIELD[key] || key
-            return `<tr><td>${escapeHtml(formatKey(key))}</td><td>${escapeHtml(String(val ?? '-'))}${escapeHtml(statusLabel(fk))}</td></tr>`
-          }).join('')
-      : ''
+    addLine('Post-DALK Prediction Report', { size: 16, bold: true, gapAfter: 10 })
+    addLine(`Generated: ${new Date().toLocaleString()}`)
+    addLine(`Patient ID: ${result.patientId || '-'}`)
+    addLine(`Eye: ${result.eye || '-'}`)
+    addLine(`Months After DALK: ${result.monthsAfterDALK ?? '-'}`)
+    addLine(`Recommended: ${result.recommended || '-'}`)
+    addLine(`Confidence: ${confidence != null ? `${confidence.toFixed(1)}%` : '-'}`, { gapAfter: 14 })
 
-    const probRows = probEntries
-      .map(([label, prob]) => `<tr><td>${escapeHtml(label)}</td><td>${Number(prob).toFixed(1)}%</td></tr>`)
-      .join('')
+    if (result.hasEstimatedValues) {
+      addLine('Warning: Report contains estimated values. Verify before clinical use.', { bold: true })
+    }
 
-    const estimationWarning = result.hasEstimatedValues
-      ? `<div style="background:#FEF3C7;border:1px solid #fbbf24;border-left:4px solid #D97706;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#92400e;">
-           <strong>⚠ Contains estimated values</strong> — one or more corneal measurements could not be extracted and were replaced with population averages. Not suitable for clinical decision-making without manual verification.
-         </div>`
-      : ''
+    addLine('Class Probabilities', { size: 12, bold: true, gapAfter: 6 })
+    if (probEntries.length === 0) {
+      addLine('N/A')
+    } else {
+      probEntries.forEach(([label, prob]) => addLine(`${label}: ${Number(prob).toFixed(1)}%`, { gapAfter: 4 }))
+      y += 6
+    }
 
-    const html = `<html><head><title>Prediction Report - ${escapeHtml(String(result.patientId || ''))}</title>
-      <style>body{font-family:Arial,sans-serif;margin:24px;color:#222}h1{margin:0 0 12px;font-size:20px}
-      .meta{margin-bottom:18px;color:#555;font-size:13px}.box{border:1px solid #d7d7d7;border-radius:8px;padding:12px;margin-bottom:12px}
-      .row{margin:4px 0}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #ddd;padding:8px;font-size:13px;text-align:left}th{background:#f3f3f3}</style>
-      </head><body>
-      <h1>Post-DALK Prediction Report</h1>
-      <div class="meta">Generated: ${escapeHtml(new Date().toLocaleString())}</div>
-      ${estimationWarning}
-      <div class="box">
-        <div class="row"><strong>Patient ID:</strong> ${escapeHtml(String(result.patientId || '-'))}</div>
-        <div class="row"><strong>Eye:</strong> ${escapeHtml(String(result.eye || '-'))}</div>
-        <div class="row"><strong>Months After DALK:</strong> ${escapeHtml(String(result.monthsAfterDALK ?? '-'))}</div>
-        <div class="row"><strong>Recommended:</strong> ${escapeHtml(String(result.recommended || '-'))}</div>
-        <div class="row"><strong>Confidence:</strong> ${confidence != null ? `${confidence.toFixed(1)}%` : '-'}</div>
-      </div>
-      <div class="box"><strong>Class Probabilities</strong>
-        <table><thead><tr><th>Class</th><th>Probability</th></tr></thead>
-        <tbody>${probRows || '<tr><td colspan="2">N/A</td></tr>'}</tbody></table>
-      </div>
-      <div class="box"><strong>Extracted / Calculated Values</strong>
-        <p style="font-size:12px;color:#8a6800;background:#fffbe6;border:1px solid #f0c93a;border-radius:4px;padding:6px 10px;margin:8px 0 4px">
-          ⚠ Values read automatically via OCR — verify before use.
-        </p>
-        <table><thead><tr><th>Parameter</th><th>Value</th></tr></thead>
-        <tbody>${extractedRows || '<tr><td colspan="2">No extracted values</td></tr>'}</tbody></table>
-      </div>
-      <div class="box"><strong>Clinical Explanation</strong>
-        <div class="row">${escapeHtml(String(result.explanation || '-'))}</div>
-      </div>
-      <script>window.print();</script></body></html>`
+    addLine('Extracted / Calculated Values', { size: 12, bold: true, gapAfter: 6 })
+    const statusLabel = (key) => {
+      const s = result.extractionStatus?.[key]
+      if (s === 'extracted') return 'Extracted'
+      if (s === 'manual_override') return 'Manual override'
+      return 'Estimated'
+    }
+    if (!result.extractedValues || Object.keys(result.extractedValues).length === 0) {
+      addLine('No extracted values')
+    } else {
+      Object.entries(result.extractedValues).forEach(([key, val]) => {
+        const fk = KEY_TO_STATUS_FIELD[key] || key
+        addLine(`${formatKey(key)}: ${String(val ?? '-')} (${statusLabel(fk)})`, { gapAfter: 4 })
+      })
+      y += 6
+    }
 
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
+    addLine('Clinical Explanation', { size: 12, bold: true, gapAfter: 6 })
+    addLine(result.explanation || '-')
+
+    const safePatient = String(result.patientId || 'patient').replace(/[^a-zA-Z0-9_-]/g, '_')
+    const safeEye = String(result.eye || 'eye').replace(/[^a-zA-Z0-9_-]/g, '_')
+    const stamp = new Date().toISOString().slice(0, 10)
+    doc.save(`prediction-report-${safePatient}-${safeEye}-${stamp}.pdf`)
   }
 
   const isReferral = result.recommended === 'Refer to Specialist'
@@ -156,6 +167,9 @@ function ResultPanel({ result, auth }) {
         <div className="result-actions">
           <button type="button" className="result-pdf-btn" onClick={handleDownloadPdf}>
             ↓ Save as PDF
+          </button>
+          <button type="button" className="result-print-btn" onClick={() => window.print()}>
+            <Printer size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Print Report
           </button>
           {result.historySaved && (
             <span className="result-saved-note">✓ Saved to history</span>
@@ -331,12 +345,6 @@ function ResultPanel({ result, auth }) {
 
     </section>
   )
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#039;')
 }
 
 function formatKey(key) {

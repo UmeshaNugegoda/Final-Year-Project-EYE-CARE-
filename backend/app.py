@@ -71,23 +71,70 @@ def extract():
             use_vlm = False
             print("[WARNING] ANTHROPIC_API_KEY set but 'anthropic' package not installed — falling back to EasyOCR")
     print(f"[extract] eye={eye} use_vlm={use_vlm}")
+    # Human-readable names for error messages
+    REPORT_NAMES = {
+        "topography"      : "Topography report",
+        "pachymetry"      : "Pachymetry report",
+        "eye_measurements": "Visual measurement report",
+    }
     extracted, temps = {}, []
     try:
-        for img_key, img_type in [("topography", "topography"), ("pachymetry", "pachymetry")]:
-            if img_key not in request.files:
-                continue
-            f = request.files[img_key]
+        # ── Phase 1: validate ALL images before merging any OCR data ─────
+        # Read bytes up-front (file streams can only be read once).
+        topo_bytes  = request.files["topography"].read()       if "topography"       in request.files else None
+        pachy_bytes = request.files["pachymetry"].read()       if "pachymetry"       in request.files else None
+        eye_bytes   = request.files["eye_measurements"].read() if "eye_measurements" in request.files else None
+
+        topo_part   = None
+        pachy_part  = None
+        eye_result  = None
+
+        if use_vlm:
+            from ocr.vlm import extract_image_vlm
+            from ocr.eye_measurements_extractor import extract_eye_measurements_vlm
+
+            if topo_bytes  is not None: topo_part  = extract_image_vlm(topo_bytes,  "topography", eye)
+            if pachy_bytes is not None: pachy_part = extract_image_vlm(pachy_bytes, "pachymetry", eye)
+            if eye_bytes   is not None: eye_result = extract_eye_measurements_vlm(eye_bytes, eye=eye)
+
+            # Collect ALL invalid-image errors before returning
+            invalid = []
+            if topo_part  is not None and "error" in topo_part:  invalid.append(REPORT_NAMES["topography"])
+            if pachy_part is not None and "error" in pachy_part: invalid.append(REPORT_NAMES["pachymetry"])
+            if eye_result is not None and "error" in eye_result: invalid.append(REPORT_NAMES["eye_measurements"])
+
+            if invalid:
+                if len(invalid) == 1:
+                    msg = f"Invalid image: The uploaded {invalid[0]} does not appear to be a valid clinical report."
+                else:
+                    names = ", ".join(invalid[:-1]) + " and " + invalid[-1]
+                    msg = f"Invalid images: The uploaded {names} do not appear to be valid clinical reports."
+                return jsonify({"error": msg, "extracted": {}}), 400
+
+        # ── Phase 2: merge OCR results ────────────────────────────────────
+        for img_key, img_type, pre_part in [
+            ("topography", "topography", topo_part),
+            ("pachymetry", "pachymetry", pachy_part),
+        ]:
             if use_vlm:
-                from ocr.vlm import extract_image_vlm
-                part = extract_image_vlm(f.read(), img_type, eye)
-                print(f"[VLM/{img_type}/{eye}] {part}")
+                part = pre_part
+                if part is None:
+                    continue
             else:
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.filename)[1] or ".jpg")
+                if img_key not in request.files:
+                    continue
+                raw_bytes = topo_bytes if img_key == "topography" else pachy_bytes
+                f = request.files[img_key]
+                suffix = os.path.splitext(f.filename)[1] or ".jpg"
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
                 tmp_path = tmp.name
                 tmp.close()
-                f.save(tmp_path)
+                with open(tmp_path, 'wb') as fh:
+                    fh.write(raw_bytes)
                 temps.append(tmp_path)
                 part = run_ocr(tmp_path, img_type, eye)
+
+            print(f"[VLM/{img_type}/{eye}] {part}")
 
             # Merge with source priority:
             # - topography owns K values + astigmatism
@@ -117,20 +164,20 @@ def extract():
             for key in ["K1_diopters", "K2_diopters", "astigmatism_diopters", "corneal_thickness_um"]
         }
 
-        # ── Eye measurements report (handwritten refraction form) ─────
-        eye_meas_file = request.files.get("eye_measurements")
-        if eye_meas_file:
-            eye_meas_bytes = eye_meas_file.read()
-            if use_vlm:
-                from ocr.eye_measurements_extractor import extract_eye_measurements_vlm
-                em_result = extract_eye_measurements_vlm(eye_meas_bytes, eye=eye)
-            else:
+        # ── Eye measurements report ───────────────────────────────────────
+        if use_vlm:
+            em_result_final = eye_result
+        else:
+            em_result_final = None
+            if eye_bytes is not None:
                 from ocr.eye_measurements_extractor import extract_eye_measurements
-                em_result = extract_eye_measurements(eye_meas_bytes, eye=eye)
-            em_status = em_result.pop("eye_extraction_status", {})
+                em_result_final = extract_eye_measurements(eye_bytes, eye=eye)
+
+        if em_result_final is not None and "error" not in em_result_final:
+            em_status = em_result_final.pop("eye_extraction_status", {})
             for field in ["ucva_snellen", "bcva_snellen", "sphere_diopters", "cylinder_diopters", "axis_degrees"]:
-                if em_result.get(field) is not None:
-                    extracted[field] = em_result[field]
+                if em_result_final.get(field) is not None:
+                    extracted[field] = em_result_final[field]
             extraction_status.update(em_status)
 
         success = sum(1 for v in extraction_status.values() if v == 'extracted')

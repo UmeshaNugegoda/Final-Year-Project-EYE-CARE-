@@ -1,11 +1,21 @@
 import { MongoClient } from 'mongodb'
 import dotenv from 'dotenv'
+import dns from 'dns'
 
 dotenv.config()
 
+// ── Force reliable DNS servers that support SRV lookups ──────────────
+// Windows' default DNS resolver sometimes can't resolve mongodb+srv SRV
+// records, causing "querySrv ECONNREFUSED". Google/Cloudflare DNS fixes this.
+dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1'])
+
 const uri = (process.env.MONGODB_URI || '').trim()
 const client = uri
-  ? new MongoClient(uri, { serverSelectionTimeoutMS: 5000 })
+  ? new MongoClient(uri, {
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS        : 30000,
+      socketTimeoutMS         : 30000,
+    })
   : null
 
 let dbInstance
@@ -71,6 +81,16 @@ function createMemoryCollection(name) {
     async findOne(filter = {}) {
       return docs.find((doc) => matchesFilter(doc, filter)) || null
     },
+    async updateOne(filter = {}, update = {}) {
+      const idx = docs.findIndex((doc) => matchesFilter(doc, filter))
+      if (idx === -1) return { acknowledged: true, matchedCount: 0, modifiedCount: 0 }
+      const setOps = update.$set || {}
+      docs[idx] = {
+        ...docs[idx],
+        ...setOps,
+      }
+      return { acknowledged: true, matchedCount: 1, modifiedCount: 1 }
+    },
     find(filter = {}) {
       const matched = docs.filter((doc) => matchesFilter(doc, filter))
       return createCursor(matched)
@@ -115,6 +135,9 @@ function createMemoryDb() {
   }
 }
 
+// Exported alias used by server.js as the Atlas-unreachable fallback
+export { createMemoryDb as buildInMemoryDb }
+
 export async function connectDb() {
   if (!dbInstance) {
     if (!client) {
@@ -122,6 +145,7 @@ export async function connectDb() {
       dbInstance = createMemoryDb()
       return dbInstance
     }
+
     try {
       await client.connect()
 
@@ -139,12 +163,21 @@ export async function connectDb() {
       dbInstance = client.db(dbName)
       console.log(`Connected to MongoDB database "${dbName}"`)
     } catch (error) {
-      console.warn(`MongoDB not reachable (${error.message}). Using in-memory database fallback.`)
-      dbInstance = createMemoryDb()
+      // Re-throw so connectDbWithRetry can retry the real MongoDB connection.
+      // resetDbInstance() is called by the caller before each retry attempt.
+      throw error
     }
   }
 
   return dbInstance
+}
+
+/**
+ * Reset the cached DB instance so the next connectDb() call retries the
+ * real MongoDB connection instead of reusing a stale in-memory fallback.
+ */
+export function resetDbInstance() {
+  dbInstance = undefined
 }
 
 export function getDb() {

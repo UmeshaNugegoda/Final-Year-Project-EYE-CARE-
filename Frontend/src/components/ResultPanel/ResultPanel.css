@@ -111,7 +111,8 @@
   gap: 6px;
 }
 
-.result-pdf-btn {
+.result-pdf-btn,
+.result-print-btn {
   padding: 7px 14px;
   border: 1.5px solid var(--color-border);
   background: transparent;
@@ -122,12 +123,19 @@
   cursor: pointer;
   font-family: inherit;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
 }
 
-.result-pdf-btn:hover {
+.result-pdf-btn:hover,
+.result-print-btn:hover {
   background: var(--color-accent-light);
   border-color: var(--color-accent);
   color: var(--color-accent);
+}
+
+@media print {
+  .result-actions { display: none; }
 }
 
 .result-saved-note {

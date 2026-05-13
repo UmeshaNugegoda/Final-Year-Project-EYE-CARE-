@@ -6,6 +6,7 @@ import Admin from './pages/Admin/Admin'
 import Dashboard from './pages/Dashboard/Dashboard'
 import PreviousPatients from './pages/PreviousPatients/PreviousPatients'
 import PatientHistory from './pages/PatientHistory/PatientHistory'
+import Profile from './pages/Profile/Profile'
 
 function ProtectedRoute({ children, auth, requireAdmin = false }) {
   if (!auth?.token || !auth?.user) {
@@ -83,6 +84,14 @@ function App() {
         element={
           <ProtectedRoute auth={auth}>
             <PatientHistory auth={auth} onLogout={handleLogout} />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute auth={auth}>
+            <Profile auth={auth} onLogout={handleLogout} />
           </ProtectedRoute>
         }
       />

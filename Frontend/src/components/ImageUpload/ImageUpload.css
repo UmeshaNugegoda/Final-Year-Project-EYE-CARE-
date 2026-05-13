@@ -81,6 +81,34 @@
   margin: 0;
 }
 
+.upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.upload-action-btn {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.upload-action-btn:hover {
+  filter: brightness(0.95);
+}
+
+.upload-action-btn--secondary {
+  background: transparent;
+  color: var(--color-primary);
+}
+
 /* ── Preview ── */
 .upload-preview {
   position: relative;

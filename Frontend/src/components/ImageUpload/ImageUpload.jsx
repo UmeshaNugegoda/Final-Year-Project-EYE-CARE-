@@ -75,7 +75,7 @@ function UploadCard({ scanner, image, onUpload, onRemove, warnings, checking, vl
       </div>
 
       {!image ? (
-        <label className="upload-area" htmlFor={`${scanner.key}-input`}>
+        <div className="upload-area">
           <div className="upload-icon">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -86,12 +86,32 @@ function UploadCard({ scanner, image, onUpload, onRemove, warnings, checking, vl
           </div>
           <p className="upload-hint">{scanner.hint}</p>
           <p className="upload-format">JPG or PNG</p>
-          <input
-            type="file" id={`${scanner.key}-input`} accept="image/*"
-            onChange={(e) => onUpload(scanner.key, e)}
-            style={{ display: 'none' }}
-          />
-        </label>
+
+          <div className="upload-actions">
+            <label className="upload-action-btn" htmlFor={`${scanner.key}-input`}>
+              Upload image
+            </label>
+            <input
+              type="file"
+              id={`${scanner.key}-input`}
+              accept="image/*"
+              onChange={(e) => onUpload(scanner.key, e)}
+              style={{ display: 'none' }}
+            />
+
+            <label className="upload-action-btn upload-action-btn--secondary" htmlFor={`${scanner.key}-scan-input`}>
+              Scan with camera
+            </label>
+            <input
+              type="file"
+              id={`${scanner.key}-scan-input`}
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => onUpload(scanner.key, e)}
+              style={{ display: 'none' }}
+            />
+          </div>
+        </div>
       ) : (
         <div className="upload-preview">
           <img src={image.preview} alt={`${scanner.title} preview`} className="preview-image" />

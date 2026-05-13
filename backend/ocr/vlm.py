@@ -7,8 +7,13 @@ import json
 import re
 
 _TOPO_PROMPT = """\
-This is a corneal topography report (e.g. Tomey RT-7000 or similar device printout).
-Extract the keratometry values from this report. The report may be labelled OD or OS — \
+Analyze the image. First, verify if it is actually a corneal topography report (e.g. Tomey RT-7000 or similar device printout).
+If the image is clearly NOT a medical report (e.g., a photo of a person, animal, fruit, or random object), you MUST return EXACTLY this JSON:
+{{
+  "error": "Invalid image: Not a topography report"
+}}
+
+If it IS a topography report, extract the keratometry values from this report. The report may be labelled OD or OS — \
 extract whatever K values are present regardless of which eye is shown.
 
 Return ONLY a JSON object (no markdown, no extra text) with exactly these keys:
@@ -27,9 +32,13 @@ Rules:
 """
 
 _PACHY_PROMPT = """\
-This is a Zeiss CIRRUS HD-OCT "Pachymetry Analysis" report (or similar corneal pachymetry printout).
+Analyze the image. First, verify if it is actually a corneal pachymetry or OCT analysis report.
+If the image is clearly NOT a medical report (e.g., a photo of a person, animal, fruit, or random object), you MUST return EXACTLY this JSON:
+{{
+  "error": "Invalid image: Not a pachymetry report"
+}}
 
-Extract the central corneal thickness (CCT) for the {eye_label} ONLY. Do NOT average or mix values \
+If it IS a pachymetry report, extract the central corneal thickness (CCT) for the {eye_label} ONLY. Do NOT average or mix values \
 from both eyes.
 
 Return ONLY a JSON object (no markdown, no extra text) with exactly this key:
@@ -100,6 +109,9 @@ def extract_topography_vlm(image_bytes, eye='OD'):
     eye_label = 'right eye (OD)' if eye == 'OD' else 'left eye (OS)'
     data = _call_vlm(image_bytes, _TOPO_PROMPT.format(eye_label=eye_label))
 
+    if 'error' in data:
+        return {'error': data['error']}
+
     result = {}
     k1 = data.get('K1_diopters')
     k2 = data.get('K2_diopters')
@@ -135,6 +147,9 @@ def extract_pachymetry_vlm(image_bytes, eye='OD'):
     eye_label = 'right eye (OD)' if eye == 'OD' else 'left eye (OS)'
     data = _call_vlm(image_bytes, _PACHY_PROMPT.format(eye_label=eye_label))
     print(f"[VLM/pachy raw] eye={eye} data={data}")
+
+    if 'error' in data:
+        return {'error': data['error']}
 
     result = {}
     cct = data.get('corneal_thickness_um')

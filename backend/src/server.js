@@ -6,7 +6,8 @@ import dotenv     from 'dotenv'
 import multer     from 'multer'
 import fetch      from 'node-fetch'
 import FormData   from 'form-data'
-import { connectDb, getDb } from './db.js'
+import nodemailer from 'nodemailer'
+import { connectDb, getDb, resetDbInstance, buildInMemoryDb } from './db.js'
 
 dotenv.config()
 
@@ -33,6 +34,16 @@ const upload = multer({
     ['image/jpeg', 'image/png', 'image/jpg'].includes(file.mimetype)
       ? cb(null, true)
       : cb(new Error('JPG and PNG only'))
+  },
+})
+
+const profileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits : { fileSize: 3 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    ['image/jpeg', 'image/png', 'image/jpg'].includes(file.mimetype)
+      ? cb(null, true)
+      : cb(new Error('Profile photo must be JPG or PNG'))
   },
 })
 
@@ -69,6 +80,11 @@ function adminOnly(req, res, next) {
     return res.status(403).json({ message: 'Admin access required' })
   }
   next()
+}
+
+function ownershipFilterFor(req) {
+  if (req.user?.role === 'admin') return {}
+  return { createdByUserId: String(req.user?.id || '') }
 }
 
 function ensureDbReady(res) {
@@ -150,27 +166,116 @@ app.post('/api/auth/login', async (req, res) => {
   })
 })
 
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { usernameOrEmail } = req.body || {}
+    if (!usernameOrEmail) {
+      return res.status(400).json({ message: 'Username or email is required.' })
+    }
+
+    const recipient = 'umeshanugegoda7678@gmail.com'
+
+    // Use environment variables for the sender account
+    const user = process.env.EMAIL_USER || 'your_email@gmail.com'
+    const pass = process.env.EMAIL_PASS || 'your_app_password'
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass }
+    })
+
+    const mailOptions = {
+      from: `"EyeCare+ System" <${user}>`,
+      to: recipient,
+      subject: "Password Reset Request",
+      text: `A password reset was requested for user/email: ${usernameOrEmail}.\n\nPlease access the admin dashboard to reset this user's password or contact support.`,
+      html: `<p>A password reset was requested for user/email: <b>${usernameOrEmail}</b>.</p><p>Please access the admin dashboard to reset this user's password or contact support.</p>`,
+    }
+
+    try {
+      await transporter.sendMail(mailOptions)
+      console.log(`Password reset email sent to ${recipient} for ${usernameOrEmail}`)
+    } catch (mailError) {
+      console.error('Failed to send email. Please configure EMAIL_USER and EMAIL_PASS in .env', mailError.message)
+      if (process.env.EMAIL_USER) {
+        throw mailError;
+      } else {
+        console.warn('Simulating success since EMAIL_USER is not set.')
+      }
+    }
+
+    return res.json({ message: 'Reset link sent successfully.' })
+  } catch (error) {
+    console.error('Error sending forgot password email:', error)
+    return res.status(500).json({ message: 'Failed to send reset email. Check server configuration.' })
+  }
+})
+
 app.get('/api/auth/me', authMiddleware, (req, res) => {
   return res.json({ user: req.user })
+})
+
+app.get('/api/users/me/profile', authMiddleware, async (req, res) => {
+  try {
+    if (!ensureDbReady(res)) return
+    const byStringId = await usersCollection.findOne({ _id: String(req.user?.id || '') })
+    let user = byStringId
+    if (!user && /^[a-fA-F0-9]{24}$/.test(String(req.user?.id || ''))) {
+      try {
+        const { ObjectId } = await import('mongodb')
+        user = await usersCollection.findOne({ _id: new ObjectId(String(req.user.id)) })
+      } catch {
+        // ignore ObjectId parse issues and fallback to null result
+      }
+    }
+    if (!user) return res.status(404).json({ message: 'User not found.' })
+    return res.json({
+      user: {
+        id: String(user._id),
+        username: user.username,
+        role: user.role,
+        doctorProfile: user.doctorProfile || null,
+      },
+    })
+  } catch (error) {
+    console.error('Error fetching current user profile', error)
+    return res.status(500).json({ message: 'Internal server error.' })
+  }
 })
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // USER MANAGEMENT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app.post('/api/users', authMiddleware, adminOnly, async (req, res) => {
+app.post('/api/users', authMiddleware, adminOnly, profileUpload.single('photo'), async (req, res) => {
   if (!ensureDbReady(res)) return
   const { username, password, role } = req.body || {}
+  const doctorDescription = String(req.body?.doctorDescription || '').trim()
   if (!username || !password || !role) {
     return res.status(400).json({ message: 'Username, password and role are required.' })
   }
   if (!['admin', 'user'].includes(role)) {
     return res.status(400).json({ message: 'Role must be "admin" or "user".' })
   }
+  if (role === 'user' && doctorDescription.length > 500) {
+    return res.status(400).json({ message: 'Clinician description must be 500 characters or less.' })
+  }
   const passwordHash = bcrypt.hashSync(password, 10)
   try {
+    const doctorProfile = role === 'user'
+      ? {
+          description: doctorDescription,
+          photoBase64: req.file?.buffer ? req.file.buffer.toString('base64') : '',
+          photoMimeType: req.file?.mimetype || '',
+        }
+      : null
+
     await usersCollection.insertOne({
-      username, passwordHash, role, createdAt: new Date().toISOString(),
+      username,
+      passwordHash,
+      role,
+      ...(doctorProfile ? { doctorProfile } : {}),
+      createdAt: new Date().toISOString(),
     })
     return res.status(201).json({ message: 'User created successfully.' })
   } catch (error) {
@@ -182,12 +287,251 @@ app.post('/api/users', authMiddleware, adminOnly, async (req, res) => {
   }
 })
 
+app.get('/api/admin/clinicians', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (!ensureDbReady(res)) return
+
+    const clinicians = await usersCollection
+      .find({ role: 'user' })
+      .sort({ createdAt: -1 })
+      .toArray()
+
+    const allPredictions = await predictionsCollection.find({}).toArray()
+    const clinicianItems = clinicians.map((c) => {
+      const clinicianId = String(c._id)
+      const patientKeySet = new Set()
+      let latestRecord = null
+
+      for (const p of allPredictions) {
+        const belongsToClinician =
+          String(p.createdByUserId || '') === clinicianId ||
+          String(p.createdByUsername || '') === String(c.username || '')
+        if (!belongsToClinician) continue
+
+        patientKeySet.add(`${p.patientId}::${p.eye}`)
+        if (!latestRecord || String(p.createdAt || '') > String(latestRecord.createdAt || '')) {
+          latestRecord = p
+        }
+      }
+
+      return {
+        id: clinicianId,
+        username: c.username,
+        description: c.doctorProfile?.description || '',
+        photoDataUrl: c.doctorProfile?.photoBase64
+          ? `data:${c.doctorProfile?.photoMimeType || 'image/jpeg'};base64,${c.doctorProfile.photoBase64}`
+          : '',
+        patientCount: patientKeySet.size,
+        recommendation: latestRecord?.recommendedCorrection || null,
+        lastActivityAt: latestRecord?.createdAt || null,
+      }
+    })
+
+    return res.json({ clinicians: clinicianItems })
+  } catch (error) {
+    console.error('Error fetching clinicians for admin dashboard', error)
+    return res.status(500).json({ message: 'Internal server error.' })
+  }
+})
+
+app.get('/api/admin/clinicians/:id/patients', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (!ensureDbReady(res)) return
+    const clinicianId = String(req.params.id || '')
+    if (!clinicianId) {
+      return res.status(400).json({ message: 'Clinician id is required.' })
+    }
+
+    let clinician = await usersCollection.findOne({ _id: clinicianId, role: 'user' })
+    if (!clinician && /^[a-fA-F0-9]{24}$/.test(clinicianId)) {
+      try {
+        const { ObjectId } = await import('mongodb')
+        clinician = await usersCollection.findOne({ _id: new ObjectId(clinicianId), role: 'user' })
+      } catch {
+        // ignore ObjectId conversion failures and fall back to 404 below
+      }
+    }
+    if (!clinician) {
+      return res.status(404).json({ message: 'Clinician not found.' })
+    }
+
+    const username = String(clinician.username || '')
+    const allPredictions = await predictionsCollection.find({}).toArray()
+    const latestByPatientEye = new Map()
+
+    for (const p of allPredictions) {
+      const belongsToClinician =
+        String(p.createdByUserId || '') === String(clinician._id) ||
+        String(p.createdByUsername || '') === username
+      if (!belongsToClinician) continue
+
+      const key = `${p.patientId}::${p.eye}`
+      const prev = latestByPatientEye.get(key)
+      if (!prev || String(p.createdAt || '') > String(prev.createdAt || '')) {
+        latestByPatientEye.set(key, p)
+      }
+    }
+
+    const patients = Array.from(latestByPatientEye.values())
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .map((p) => ({
+        patientId: p.patientId,
+        eye: p.eye,
+        status: p.recommendedCorrection || '—',
+        lastVisit: p.createdAt,
+        monthsAfterDALK: p.monthsAfterDALK ?? null,
+      }))
+
+    return res.json({ patients })
+  } catch (error) {
+    console.error('Error fetching clinician patients', error)
+    return res.status(500).json({ message: 'Internal server error.' })
+  }
+})
+
+app.patch('/api/admin/clinicians/:id', authMiddleware, adminOnly, profileUpload.single('photo'), async (req, res) => {
+  try {
+    if (!ensureDbReady(res)) return
+    const clinicianId = String(req.params.id || '')
+    const description = String(req.body?.doctorDescription || '').trim()
+    if (!clinicianId) {
+      return res.status(400).json({ message: 'Clinician id is required.' })
+    }
+    if (description.length > 500) {
+      return res.status(400).json({ message: 'Clinician description must be 500 characters or less.' })
+    }
+
+    let clinician = await usersCollection.findOne({ _id: clinicianId, role: 'user' })
+    let idFilter = { _id: clinicianId, role: 'user' }
+    if (!clinician && /^[a-fA-F0-9]{24}$/.test(clinicianId)) {
+      try {
+        const { ObjectId } = await import('mongodb')
+        const oid = new ObjectId(clinicianId)
+        clinician = await usersCollection.findOne({ _id: oid, role: 'user' })
+        idFilter = { _id: oid, role: 'user' }
+      } catch {
+        // ignore conversion failure; 404 handled below
+      }
+    }
+    if (!clinician) {
+      return res.status(404).json({ message: 'Clinician not found.' })
+    }
+
+    const nextProfile = {
+      description,
+      photoBase64: req.file?.buffer
+        ? req.file.buffer.toString('base64')
+        : (clinician.doctorProfile?.photoBase64 || ''),
+      photoMimeType: req.file?.buffer
+        ? req.file.mimetype
+        : (clinician.doctorProfile?.photoMimeType || ''),
+    }
+
+    const updateResult = await usersCollection.updateOne(
+      idFilter,
+      { $set: { doctorProfile: nextProfile, updatedAt: new Date().toISOString() } },
+    )
+    if (!updateResult.matchedCount) {
+      return res.status(404).json({ message: 'Clinician not found.' })
+    }
+
+    return res.json({ message: 'Clinician profile updated successfully.' })
+  } catch (error) {
+    console.error('Error updating clinician profile', error)
+    return res.status(500).json({ message: 'Internal server error.' })
+  }
+})
+
+app.delete('/api/admin/clinicians/:id', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (!ensureDbReady(res)) return
+    const clinicianId = String(req.params.id || '')
+    if (!clinicianId) {
+      return res.status(400).json({ message: 'Clinician id is required.' })
+    }
+
+    let idFilter = { _id: clinicianId, role: 'user' }
+    if (/^[a-fA-F0-9]{24}$/.test(clinicianId)) {
+      try {
+        const { ObjectId } = await import('mongodb')
+        idFilter = { _id: new ObjectId(clinicianId), role: 'user' }
+      } catch {
+        // ignore conversion failure
+      }
+    }
+
+    const deleteResult = await usersCollection.deleteOne(idFilter)
+    if (!deleteResult.deletedCount) {
+      // Also try string ID if ObjectId didn't delete anything and vice versa (fallback)
+      const stringIdFilter = { _id: clinicianId, role: 'user' }
+      const stringDeleteResult = await usersCollection.deleteOne(stringIdFilter)
+      if (!stringDeleteResult.deletedCount) {
+          return res.status(404).json({ message: 'Clinician not found.' })
+      }
+    }
+
+    // Optional: we don't delete predictions tied to them so history is maintained, but clinician login is gone
+    return res.json({ message: 'Clinician deleted successfully.' })
+  } catch (error) {
+    console.error('Error deleting clinician', error)
+    return res.status(500).json({ message: 'Internal server error.' })
+  }
+})
+
+app.patch('/api/admin/clinicians/:id/reset-password', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    if (!ensureDbReady(res)) return
+    const clinicianId = String(req.params.id || '')
+    const { newPassword } = req.body || {}
+    
+    if (!clinicianId) {
+      return res.status(400).json({ message: 'Clinician id is required.' })
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters.' })
+    }
+
+    let idFilter = { _id: clinicianId, role: 'user' }
+    if (/^[a-fA-F0-9]{24}$/.test(clinicianId)) {
+      try {
+        const { ObjectId } = await import('mongodb')
+        idFilter = { _id: new ObjectId(clinicianId), role: 'user' }
+      } catch {
+        // ignore conversion failure
+      }
+    }
+
+    const passwordHash = bcrypt.hashSync(newPassword, 10)
+
+    const updateResult = await usersCollection.updateOne(
+      idFilter,
+      { $set: { passwordHash, updatedAt: new Date().toISOString() } },
+    )
+    if (!updateResult.matchedCount) {
+      const stringIdFilter = { _id: clinicianId, role: 'user' }
+      const stringUpdateResult = await usersCollection.updateOne(
+        stringIdFilter,
+        { $set: { passwordHash, updatedAt: new Date().toISOString() } },
+      )
+      if (!stringUpdateResult.matchedCount) {
+        return res.status(404).json({ message: 'Clinician not found.' })
+      }
+    }
+
+    return res.json({ message: 'Password reset successfully.' })
+  } catch (error) {
+    console.error('Error resetting clinician password', error)
+    return res.status(500).json({ message: 'Internal server error.' })
+  }
+})
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PREDICTIONS ROUTE  ← updated to use real ML model via Flask
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 app.post(
   '/api/analyze-quality',
+  authMiddleware,
   upload.fields([
     { name: 'topography',       maxCount: 1 },
     { name: 'pachymetry',       maxCount: 1 },
@@ -221,6 +565,7 @@ app.post(
 
 app.post(
   '/api/predictions',
+  authMiddleware,
   upload.fields([
     { name: 'topography',       maxCount: 1 },
     { name: 'pachymetry',       maxCount: 1 },
@@ -302,10 +647,14 @@ app.post(
             ocrExtractionStatus  = ocrData.extraction_status || {}
             console.log('OCR extracted:', extractedValues)
           } else {
-            console.warn('OCR request failed — proceeding without extracted values')
+            const errData = await ocrRes.json().catch(() => ({}))
+            console.warn('OCR request failed — proceeding without extracted values', errData)
+            if (errData.error && errData.error.startsWith('Invalid image')) {
+              return res.status(400).json({ message: errData.error })
+            }
           }
         } catch (ocrErr) {
-          // OCR failure is non-fatal — imputer handles missing values
+          // OCR failure is non-fatal — imputer handles missing values (unless validation fails)
           console.warn('OCR error (non-fatal):', ocrErr.message)
         }
       }
@@ -413,7 +762,7 @@ app.post(
 
       // ── Step 4b: Fetch most recent prior record for comparison ──
       const priorRecord = await predictionsCollection.findOne(
-        { patientId: normalizedPatientId, eye: normalizedEye },
+        { patientId: normalizedPatientId, eye: normalizedEye, ...ownershipFilterFor(req) },
         { sort: { createdAt: -1 }, projection: { recommendedCorrection: 1, confidence: 1, createdAt: 1 } }
       )
 
@@ -439,6 +788,9 @@ app.post(
         confidence           : ml.confidence,
         probabilities        : ml.probabilities,
         explanation          : EXPLANATIONS[ml.prediction] || '',
+        createdByUserId      : String(req.user?.id || ''),
+        createdByUsername    : String(req.user?.username || ''),
+        createdByRole        : String(req.user?.role || 'user'),
         createdAt            : new Date().toISOString(),
       })
 
@@ -523,7 +875,7 @@ app.patch('/api/predictions/:id/notes', authMiddleware, async (req, res) => {
     let oid
     try { oid = new ObjectId(id) } catch { return res.status(400).json({ message: 'Invalid id' }) }
     const result = await predictionsCollection.updateOne(
-      { _id: oid },
+      { _id: oid, ...ownershipFilterFor(req) },
       { $set: { clinicianNotes: notes.trim(), notesUpdatedAt: new Date().toISOString() } }
     )
     if (result.matchedCount === 0) return res.status(404).json({ message: 'Record not found' })
@@ -549,6 +901,7 @@ app.get('/api/dashboard/due-reassessment', authMiddleware, async (req, res) => {
 
     // Get the most recent assessment per patient+eye combination
     const latest = await predictionsCollection.aggregate([
+      { $match: ownershipFilterFor(req) },
       { $sort: { createdAt: -1 } },
       { $group: {
         _id: { patientId: '$patientId', eye: '$eye' },
@@ -589,10 +942,11 @@ app.get('/api/dashboard/due-reassessment', authMiddleware, async (req, res) => {
 app.get('/api/dashboard/stats', authMiddleware, async (req, res) => {
   try {
     if (!ensureDbReady(res)) return
-    const totalAssessments = await predictionsCollection.countDocuments()
-    const glasses          = await predictionsCollection.countDocuments({ recommendedCorrection: 'Spectacles' })
-    const contactLenses    = await predictionsCollection.countDocuments({ recommendedCorrection: 'Contact Lenses' })
-    const noCorrection     = await predictionsCollection.countDocuments({ recommendedCorrection: 'No Correction' })
+    const scope = ownershipFilterFor(req)
+    const totalAssessments = await predictionsCollection.countDocuments(scope)
+    const glasses          = await predictionsCollection.countDocuments({ ...scope, recommendedCorrection: 'Spectacles' })
+    const contactLenses    = await predictionsCollection.countDocuments({ ...scope, recommendedCorrection: 'Contact Lenses' })
+    const noCorrection     = await predictionsCollection.countDocuments({ ...scope, recommendedCorrection: 'No Correction' })
     return res.json({ totalAssessments, glasses, contactLenses, noCorrection })
   } catch (error) {
     console.error('Error fetching dashboard stats', error)
@@ -603,8 +957,9 @@ app.get('/api/dashboard/stats', authMiddleware, async (req, res) => {
 app.get('/api/dashboard/activity', authMiddleware, async (req, res) => {
   try {
     if (!ensureDbReady(res)) return
+    const scope = ownershipFilterFor(req)
     const list = await predictionsCollection
-      .find({})
+      .find(scope)
       .sort({ createdAt: -1 })
       .limit(10)
       .project({ patientId:1, eye:1, recommendedCorrection:1, createdAt:1 })
@@ -629,8 +984,10 @@ app.get('/api/dashboard/activity', authMiddleware, async (req, res) => {
 app.get('/api/patients', authMiddleware, async (req, res) => {
   try {
     if (!ensureDbReady(res)) return
+    const scope = ownershipFilterFor(req)
     const aggregated = await predictionsCollection
       .aggregate([
+        { $match: scope },
         { $sort: { createdAt: -1 } },
         {
           $group: {
@@ -665,7 +1022,7 @@ app.get('/api/patients/:patientId/history', authMiddleware, async (req, res) => 
     if (!ensureDbReady(res)) return
     const { patientId } = req.params
     const { eye }       = req.query
-    const filter        = { patientId: String(patientId) }
+    const filter        = { patientId: String(patientId), ...ownershipFilterFor(req) }
     if (eye) filter.eye = String(eye)
     const list = await predictionsCollection
       .find(filter).sort({ createdAt: -1 }).toArray()
@@ -707,27 +1064,59 @@ app.get('/api/patients/:patientId/history', authMiddleware, async (req, res) => 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 app.get('/api/health', async (req, res) => {
+  // Detect if we are using the in-memory fallback or real MongoDB
+  let dbType = 'not_connected'
+  if (dbReady && usersCollection) {
+    // The real MongoDB collection has a collectionName property; in-memory does not.
+    dbType = typeof usersCollection.collectionName === 'string'
+      ? 'mongodb_atlas'
+      : 'in_memory_fallback'
+  }
   return res.json({
-    status: 'ok',
+    status  : 'ok',
     database: dbReady ? 'connected' : 'connecting',
+    dbType,
     flaskUrl: FLASK_URL,
+    mongoUri: process.env.MONGODB_URI ? 'set' : 'missing',
   })
 })
+
+let _dbRetryCount = 0
+const DB_MAX_RETRIES = 3
 
 async function connectDbWithRetry() {
   if (dbConnectInProgress || dbReady) return
   dbConnectInProgress = true
   try {
     await connectDb()
-    const db             = getDb()
-    usersCollection      = db.collection('users')
+    const db              = getDb()
+    usersCollection       = db.collection('users')
     predictionsCollection = db.collection('predictions')
     await initAdminUser()
     dbReady = true
-    console.log('Database connection established.')
+    _dbRetryCount = 0
+    console.log('Database connection established (MongoDB Atlas).')
   } catch (error) {
-    dbReady = false
-    console.error('Database connection failed. Retrying in 10 seconds...', error)
+    _dbRetryCount++
+    resetDbInstance() // so next attempt actually retries MongoDB
+
+    if (_dbRetryCount >= DB_MAX_RETRIES) {
+      // ── Fallback: use in-memory so the app stays usable ───────────
+      console.warn(
+        `MongoDB Atlas unreachable after ${DB_MAX_RETRIES} attempts ` +
+        `(${error.message}). Using in-memory DB — ` +
+        `data will NOT persist across server restarts.`
+      )
+      const fallbackDb      = buildInMemoryDb()
+      usersCollection       = fallbackDb.collection('users')
+      predictionsCollection = fallbackDb.collection('predictions')
+      await initAdminUser()
+      dbReady = true
+      dbConnectInProgress = false
+      return
+    }
+
+    console.error(`MongoDB connection failed (attempt ${_dbRetryCount}/${DB_MAX_RETRIES}). Retrying in 10 seconds... ${error.message}`)
     setTimeout(() => {
       dbConnectInProgress = false
       connectDbWithRetry()

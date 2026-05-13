@@ -141,7 +141,11 @@ function Prediction({ auth, onLogout }) {
     try {
       const qForm = new FormData()
       qForm.append(type, file)
-      const res = await fetch('/api/analyze-quality', { method: 'POST', body: qForm })
+      const res = await fetch('/api/analyze-quality', {
+        method: 'POST',
+        body: qForm,
+        headers: auth?.token ? { Authorization: `Bearer ${auth.token}` } : {},
+      })
       if (res.ok) {
         const data = await res.json()
         const warnings = data.warnings?.[type] || []
@@ -269,7 +273,11 @@ function Prediction({ auth, onLogout }) {
         if (images.eye_measurements?.file) payload.append('eye_measurements', images.eye_measurements.file)
       }
 
-      const response = await fetch('/api/predictions', { method: 'POST', body: payload })
+      const response = await fetch('/api/predictions', {
+        method: 'POST',
+        body: payload,
+        headers: auth?.token ? { Authorization: `Bearer ${auth.token}` } : {},
+      })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
         throw new Error(err.message || 'Prediction failed')

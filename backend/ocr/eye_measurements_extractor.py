@@ -24,7 +24,13 @@ from .preprocessing import _preprocess_eye_measurements_for_ocr
 _FIELDS = ('ucva_snellen', 'bcva_snellen', 'sphere_diopters', 'cylinder_diopters', 'axis_degrees')
 
 _VLM_PROMPT = """\
-This is an ophthalmology refraction/prescription form. Extract values for the {eye_label} eye only.
+Analyze the image. First, verify if it is actually an ophthalmology refraction/prescription form or clinical eye measurements report.
+If the image is clearly NOT a medical report (e.g., a photo of a person, animal, fruit, or random object), you MUST return EXACTLY this JSON:
+{{
+  "error": "Invalid image: Not a visual measurement report"
+}}
+
+If it IS a valid report, extract values for the {eye_label} eye only.
 
 Return ONLY a JSON object (no markdown, no extra text) with exactly these keys:
 {{
@@ -82,6 +88,9 @@ def extract_eye_measurements_vlm(image_bytes, eye='OD'):
     except json.JSONDecodeError:
         print(f"[VLM] non-JSON response: {raw[:120]!r}")
         return {k: None for k in _FIELDS} | {'eye_extraction_status': {k: 'not_found' for k in _FIELDS}}
+
+    if 'error' in data:
+        return {'error': data['error']}
 
     result = {k: data.get(k) for k in _FIELDS}
 

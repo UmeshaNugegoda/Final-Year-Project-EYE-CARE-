@@ -15,7 +15,8 @@
     "jsonwebtoken": "latest",
     "mongodb": "^7.1.0",
     "multer": "latest",
-    "node-fetch": "latest"
+    "node-fetch": "latest",
+    "nodemailer": "^8.0.6"
   },
   "devDependencies": {
     "nodemon": "latest",
